@@ -1,0 +1,44 @@
+:root {
+  --van-primary-color: #1f6feb;
+  --page-bg: #f5f7fa;
+  --card-radius: 12px;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--page-bg);
+  color: #1f2329;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding-bottom: calc(60px + env(safe-area-inset-bottom));
+}
+
+.card {
+  margin: 12px;
+  padding: 16px;
+  background: #fff;
+  border-radius: var(--card-radius);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.card h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.muted {
+  color: #86909c;
+  font-size: 13px;
+}
+
+.section-title {
+  margin: 18px 16px 6px;
+  font-size: 14px;
+  color: #86909c;
+}

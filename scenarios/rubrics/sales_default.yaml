@@ -1,0 +1,30 @@
+# 销售通用评分表（满分 100 = 各维度 score/5 × 权重 之和 − 求助扣分）
+id: sales_default
+name: 销售通用评分表
+hint_penalty: 2        # 每次求助扣分
+hint_penalty_max: 10   # 求助扣分上限
+dimensions:
+  - name: 开场与建立信任
+    weight: 15
+    good: 礼貌、简洁、快速说明价值
+    bad: 冗长或生硬推销
+  - name: 需求挖掘
+    weight: 25
+    good: 开放式提问，挖出隐藏需求
+    bad: 不提问，自说自话
+  - name: 异议处理
+    weight: 25
+    good: 认同—澄清—回应—确认
+    bad: 争辩或回避
+  - name: 价值塑造
+    weight: 20
+    good: 结合客户需求讲价值而非参数
+    bad: 只讲功能、只降价
+  - name: 推进与促成
+    weight: 10
+    good: 明确提出下一步
+    bad: 无推进动作
+  - name: 合规与礼仪
+    weight: 5
+    good: 无违规承诺，用语规范
+    bad: 违规承诺、不礼貌

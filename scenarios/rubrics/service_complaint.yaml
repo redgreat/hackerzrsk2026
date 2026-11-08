@@ -1,0 +1,26 @@
+# 客服投诉评分表
+id: service_complaint
+name: 客服投诉评分表
+hint_penalty: 2
+hint_penalty_max: 10
+dimensions:
+  - name: 情绪安抚与共情
+    weight: 30
+    good: 先处理情绪再处理事情，真诚致歉、复述客户感受
+    bad: 急于解释、推卸责任、语气生硬
+  - name: 问题确认与澄清
+    weight: 20
+    good: 主动确认关键信息（时间、现象、诉求），复述确认
+    bad: 不了解情况就给结论
+  - name: 解决方案与时效承诺
+    weight: 25
+    good: 给出具体可执行方案与明确时间节点
+    bad: 方案空泛，“尽快”“我反馈一下”
+  - name: 合规表达
+    weight: 15
+    good: 不推诿、不越权承诺赔偿，不泄露其他客户信息
+    bad: 越权承诺、推诿、指责客户
+  - name: 结束与回访确认
+    weight: 10
+    good: 确认客户是否满意，约定回访方式
+    bad: 草草结束

@@ -1,0 +1,53 @@
+# 场景内容均为虚构示例，替换为真实业务内容前请先脱敏（doc/05-data-and-security.md）
+id: S01
+name: 嫌贵比价的客户
+department: [销售]
+difficulty: 2
+max_turns: 15
+estimated_minutes: 5
+tags: [价值塑造, 异议处理]
+summary: 采购负责人认为报价比竞品高，要你“说重点”。
+
+background: |
+  客户是华东某制造企业的采购负责人王经理，已经了解过我们的“星云客户管理系统”，
+  同时在对比两家竞品，认为我们报价偏高（约高 15%）。今天是第二次电话沟通。
+goal: 化解价格异议，让客户同意进入下一步商务洽谈（约时间详细沟通方案）。
+
+persona:
+  name: 王经理
+  role: 采购负责人
+  personality: 精明、直接、语速快，不喜欢被推销，重视投入产出比
+  speaking_style: 说话简短，爱打断，常用“说重点”“别绕弯子”
+  background: 公司 300 人左右，去年上过一套系统但实施失败，领导对再上系统很谨慎
+  budget: 低于我方报价约 15%
+  hidden_needs:
+    - 上线后的售后响应速度（去年被上一家供应商坑过）
+    - 能否分期付款，缓解今年预算压力
+  objections:
+    - id: price
+      text: 比竞品贵，看不出贵在哪里
+      key: true
+      resolve_hints: [价值, 投入产出, 算账, 总成本, 节省, 效率]
+    - id: risk
+      text: 担心实施周期太长、再次失败影响业务
+      key: true
+      resolve_hints: [实施, 周期, 案例, 上线, 保障, 分阶段]
+    - id: service
+      text: 担心售后响应慢
+      key: false
+      resolve_hints: [售后, 响应, 专属, 小时, 驻场]
+
+opening:
+  speaker: customer
+  line: 喂，你好。你们的报价我看了，比另外两家贵不少啊，你说重点，凭什么贵？
+  tip: 先别急着降价，试着了解客户在对比什么。
+
+state_rules:
+  initial_trust: 30
+  deal_threshold: 75
+  hangup_threshold: 5
+  min_turns_to_deal: 4
+
+deal_line: 行吧，你说的有点道理。下周二下午你们来一趟，把方案和分期的事详细讲讲。
+hangup_line: 算了，我们再看看别家吧，先这样。
+scoring: sales_default

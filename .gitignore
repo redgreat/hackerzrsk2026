@@ -218,3 +218,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# 本地敏感数据（客户信息、原始资料等），禁止提交
+data/private/
+
+# 前端依赖
+node_modules/
+
+# 环境变量（示例文件除外）
+.env.*
+!.env.example
