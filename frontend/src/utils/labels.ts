@@ -30,3 +30,25 @@ export function formatTime(iso: string | null): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getMonth() + 1}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
+
+export function pct(v: number | null | undefined): string {
+  return v == null ? '-' : `${(v * 100).toFixed(1)}%`
+}
+
+export const PURPOSE_LABEL: Record<string, string> = {
+  customer: '客户回复',
+  evaluator: '轮次评估',
+  coach: '教练报告',
+  hint: '求助提示',
+  embedding: '知识向量',
+  asr: '语音识别',
+  tts: '语音合成',
+}
+
+export const OUTCOME_EL_TAG: Record<Outcome, 'primary' | 'success' | 'warning' | 'danger' | 'info'> = {
+  ongoing: 'primary',
+  deal: 'success',
+  hangup: 'danger',
+  max_turns: 'warning',
+  user_end: 'info',
+}

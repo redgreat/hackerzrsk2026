@@ -34,9 +34,16 @@ async def current_user(
 UserDep = Annotated[User, Depends(current_user)]
 
 
+def is_admin(settings, user: User) -> bool:
+    # 生产环境必须显式配置管理员工号；开发/测试环境未配置时放开，便于本地调试
+    if not settings.admin_userids:
+        return settings.app_env != "prod"
+    return user.userid in settings.admin_userids
+
+
 async def admin_user(c: ContainerDep, user: UserDep) -> User:
-    if c.settings.admin_userids and user.userid not in c.settings.admin_userids:
-        raise Forbidden("仅管理员可查看")
+    if not is_admin(c.settings, user):
+        raise Forbidden("仅管理员可访问")
     return user
 
 

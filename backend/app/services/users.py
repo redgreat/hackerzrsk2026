@@ -21,5 +21,11 @@ async def upsert_user(
     return user
 
 
-def user_dict(user: User) -> dict:
-    return {"id": user.id, "userid": user.userid, "name": user.name, "department": user.department}
+def user_dict(user: User, is_admin: bool = False) -> dict:
+    return {
+        "id": user.id,
+        "userid": user.userid,
+        "name": user.name,
+        "department": user.department,
+        "is_admin": is_admin,
+    }

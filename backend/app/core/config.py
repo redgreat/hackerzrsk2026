@@ -75,11 +75,20 @@ class WeComSettings(BaseModel):
     corp_id: str | None = None
     agent_id: str | None = None
     secret: str | None = None
+    # 应用「接收消息」配置中的 Token 与 EncodingAESKey（用于回调验签与解密）
+    token: str | None = None
+    encoding_aes_key: str | None = None
     api_base: str = "https://qyapi.weixin.qq.com"
+    # H5 对外地址（企微消息里的报告链接），如 https://coach.example.com
+    public_base_url: str | None = None
 
     @property
     def enabled(self) -> bool:
         return bool(self.corp_id and self.agent_id and self.secret)
+
+    @property
+    def chat_enabled(self) -> bool:
+        return bool(self.enabled and self.token and self.encoding_aes_key)
 
 
 class Settings(BaseSettings):

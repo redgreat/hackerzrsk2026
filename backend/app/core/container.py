@@ -11,6 +11,7 @@ from app.services.practice import PracticeService
 from app.services.scenarios import ScenarioRegistry
 from app.services.speech import SpeechService
 from app.services.wecom import WeComClient
+from app.services.wecom_chat import WeComChatBot
 
 
 @dataclass
@@ -24,3 +25,4 @@ class Container:
     speech: SpeechService
     wecom: WeComClient
     practice: PracticeService
+    wecom_bot: WeComChatBot

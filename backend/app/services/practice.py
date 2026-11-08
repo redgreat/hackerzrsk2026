@@ -285,6 +285,28 @@ class PracticeService:
             ],
         }
 
+    async def active_session(self, user: User) -> PracticeSession | None:
+        async with self.sf() as db:
+            return (
+                await db.execute(
+                    select(PracticeSession)
+                    .where(PracticeSession.user_id == user.id, PracticeSession.status == "ongoing")
+                    .order_by(PracticeSession.started_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
+    async def last_reported_session(self, user: User) -> PracticeSession | None:
+        async with self.sf() as db:
+            return (
+                await db.execute(
+                    select(PracticeSession)
+                    .where(PracticeSession.user_id == user.id, PracticeSession.report.is_not(None))
+                    .order_by(PracticeSession.started_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
     async def report(self, sid: uuid.UUID, user: User) -> dict | None:
         async with self.sf() as db:
             return (await self._owned(db, sid, user)).report

@@ -13,6 +13,7 @@ const auth = useAuthStore()
 const loading = ref(true)
 const devEnabled = ref(false)
 const wecomEnabled = ref(false)
+const qrUrl = ref<string | null>(null)
 const form = ref({ userid: '', name: '', department: '销售' })
 
 function finish(token: string, user: Parameters<typeof auth.setLogin>[1]) {
@@ -32,6 +33,7 @@ onMounted(async () => {
     const cfg = await api.authConfig(`${location.origin}/login`)
     wecomEnabled.value = cfg.wecom_enabled
     devEnabled.value = cfg.dev_login_enabled
+    qrUrl.value = cfg.qr_url
     if (cfg.oauth_url && /wxwork/i.test(navigator.userAgent)) {
       sessionStorage.setItem(REDIRECT_KEY, (route.query.redirect as string) || '/')
       location.replace(cfg.oauth_url)
@@ -42,6 +44,11 @@ onMounted(async () => {
   }
   loading.value = false
 })
+
+function scanLogin() {
+  sessionStorage.setItem(REDIRECT_KEY, (route.query.redirect as string) || '/')
+  location.href = qrUrl.value!
+}
 
 async function devLogin() {
   if (!form.value.userid.trim()) return showFailToast('请输入工号')
@@ -64,25 +71,33 @@ async function devLogin() {
 
     <van-loading v-if="loading" class="center" vertical>正在登录…</van-loading>
 
-    <div v-else-if="devEnabled" class="card">
-      <h3>开发登录</h3>
-      <p class="muted">本地开发 / 演示用；生产环境走企业微信免登。</p>
-      <van-cell-group inset>
-        <van-field v-model="form.userid" label="工号" placeholder="如 E10001" />
-        <van-field v-model="form.name" label="姓名" placeholder="选填" />
-        <van-field label="部门">
-          <template #input>
-            <van-radio-group v-model="form.department" direction="horizontal">
-              <van-radio name="销售">销售</van-radio>
-              <van-radio name="客服">客服</van-radio>
-            </van-radio-group>
-          </template>
-        </van-field>
-      </van-cell-group>
-      <van-button type="primary" block round style="margin-top: 16px" @click="devLogin">进入</van-button>
-    </div>
+    <template v-else>
+      <div v-if="qrUrl" class="card">
+        <h3>企业微信扫码登录</h3>
+        <p class="muted">电脑端请使用企业微信扫码；手机端请在企业微信工作台中打开。</p>
+        <van-button type="primary" block round @click="scanLogin">打开企业微信扫码</van-button>
+      </div>
 
-    <van-empty v-else :description="wecomEnabled ? '请在企业微信工作台中打开本应用' : '登录方式未配置，请联系管理员'" />
+      <div v-if="devEnabled" class="card">
+        <h3>开发登录</h3>
+        <p class="muted">本地开发 / 演示用；生产环境关闭。</p>
+        <van-cell-group inset>
+          <van-field v-model="form.userid" label="工号" placeholder="如 E10001" />
+          <van-field v-model="form.name" label="姓名" placeholder="选填" />
+          <van-field label="部门">
+            <template #input>
+              <van-radio-group v-model="form.department" direction="horizontal">
+                <van-radio name="销售">销售</van-radio>
+                <van-radio name="客服">客服</van-radio>
+              </van-radio-group>
+            </template>
+          </van-field>
+        </van-cell-group>
+        <van-button type="primary" block round style="margin-top: 16px" @click="devLogin">进入</van-button>
+      </div>
+
+      <van-empty v-if="!qrUrl && !devEnabled" :description="wecomEnabled ? '请在企业微信中打开本应用' : '登录方式未配置，请联系管理员'" />
+    </template>
   </div>
 </template>
 

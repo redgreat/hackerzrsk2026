@@ -3,6 +3,7 @@ export interface User {
   userid: string
   name: string
   department: string
+  is_admin: boolean
 }
 
 export interface ScenarioCard {
@@ -115,3 +116,116 @@ export type StreamEvent =
   | { type: 'report_ready'; total_score: number }
   | { type: 'error'; message: string }
   | { type: 'done'; status: Outcome; turn: number }
+
+export interface Paged<T> {
+  total: number
+  items: T[]
+}
+
+export interface AdminUser {
+  id: number
+  userid: string
+  name: string
+  department: string
+  source: string
+  last_login_at: string | null
+  sessions: number
+  avg_score: number | null
+  cost_yuan: number
+  last_practice_at: string | null
+}
+
+export interface AdminSession {
+  id: string
+  scenario_id: string
+  scenario_name: string
+  status: Outcome
+  turns: number
+  hints_used: number
+  total_score: number | null
+  final_trust: number | null
+  prompt_tokens: number
+  completion_tokens: number
+  cost_yuan: number
+  started_at: string | null
+  ended_at: string | null
+  userid: string
+  user_name: string
+  department: string
+}
+
+export interface AdminSessionDetail extends Omit<AdminSession, 'userid' | 'user_name' | 'department'> {
+  user: { id: number; userid: string; name: string; department: string }
+  report: Report | null
+  messages: {
+    seq: number
+    turn: number
+    role: 'user' | 'customer' | 'hint'
+    content: string
+    trust_delta: number | null
+    trust_after: number | null
+    inner_thought: string | null
+    meta: Record<string, unknown> | null
+  }[]
+  usage: { purpose: string; model: string; prompt_tokens: number; completion_tokens: number; cost_yuan: number; latency_ms: number }[]
+}
+
+export interface UsageRow {
+  id: number
+  session_id: string | null
+  user_id: number | null
+  purpose: string
+  model: string
+  prompt_tokens: number
+  completion_tokens: number
+  audio_seconds: number
+  tts_chars: number
+  cost_yuan: number
+  latency_ms: number
+  created_at: string | null
+}
+
+export interface UsagePage extends Paged<UsageRow> {
+  daily: { day: string; calls: number; cost_yuan: number; tokens: number }[]
+}
+
+export interface TrendPoint {
+  day: string
+  sessions: number
+  avg_score: number | null
+  cost_yuan: number
+}
+
+export interface AdminScenario {
+  id: string
+  name: string
+  department: string[]
+  difficulty: number
+  max_turns: number
+  summary: string
+  goal: string
+  background: string
+  persona: {
+    name: string
+    role: string
+    personality: string
+    speaking_style: string
+    background: string
+    budget: string | null
+    hidden_needs: string[]
+    objections: { id: string; text: string; key: boolean; resolve_hints: string[] }[]
+  }
+  state_rules: { initial_trust: number; deal_threshold: number; hangup_threshold: number; min_turns_to_deal: number }
+  scoring: string
+  rubric: { name: string; dimensions: { name: string; weight: number; good: string; bad: string }[] }
+}
+
+export interface KnowledgeItem {
+  id: number
+  source: string
+  title: string
+  tags: string[]
+  scenario_ids: string[]
+  has_embedding: boolean
+  preview: string
+}

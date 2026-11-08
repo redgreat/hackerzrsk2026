@@ -83,7 +83,8 @@ function logout() {
     <van-empty v-if="!sessions.length" description="还没有练习记录，去练一次吧" />
 
     <van-cell-group inset style="margin-top: 16px">
-      <van-cell title="效果与成本统计" icon="bar-chart-o" is-link to="/overview" />
+      <van-cell v-if="auth.user?.is_admin" title="效果与成本统计" icon="bar-chart-o" is-link to="/overview" />
+      <van-cell v-if="auth.user?.is_admin" title="管理后台（建议用电脑打开）" icon="setting-o" is-link to="/admin" />
     </van-cell-group>
   </div>
 </template>

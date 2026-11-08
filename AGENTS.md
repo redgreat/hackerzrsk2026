@@ -111,3 +111,13 @@ pnpm build                                     # vue-tsc 类型检查 + 构建�
 注意事项：
 - Windows 控制台为 GBK 编码，运行脚本时设置 `PYTHONIOENCODING=utf-8`；在 Git Bash 里用 curl 发送中文 JSON 会乱码，请改用 Python/httpx 测试。
 - pytest-asyncio 的 fixture 和测试都使用 session 级事件循环（见 pyproject）。如果改成函数级，连接池会挂在另一个循环上导致超时。
+
+发布与部署：
+- 本地（Windows）：`.\script\release.ps1 [vX.Y.Z]` 只负责打标签并推送，触发 GitHub Actions 构建 GHCR 镜像。
+- 服务器：`./script/redeploy.sh [--tag vX.Y.Z] [--migrate]` 只负责服务器上拉取与重启，不依赖本地环境。
+- 不要把两者的逻辑混在一起。
+
+企业微信与管理后台：
+- 应用对话：`app/api/wecom.py`（回调）→ `app/services/wecom_chat.py`（指令与会话编排，复用 `PracticeService`）→ `app/services/wecom.py`（发送）。回调必须快速应答，耗时逻辑放后台任务。
+- 管理后台 API：`app/api/admin.py` → `app/services/admin.py`，只读，统一 `AdminDep`。前端在 `frontend/src/views/admin/`，使用 Element Plus（H5 仍用 Vant）。
+- 新增对话指令时同步 `parse_command` 与 `tests/test_wecom.py`。

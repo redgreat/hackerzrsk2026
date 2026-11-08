@@ -5,6 +5,7 @@ description = "AI 客户陪练：FastAPI + LangGraph + PostgreSQL 的销售/客�
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.1",
+    "cryptography>=50.0.2",
     "fastapi[standard]>=0.162.0",
     "httpx>=0.28.1",
     "langchain-core>=1.7.3",

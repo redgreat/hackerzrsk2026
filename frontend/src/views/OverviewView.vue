@@ -20,7 +20,7 @@ const PURPOSE: Record<string, string> = {
 
 onMounted(async () => {
   try {
-    data.value = await api.overview()
+    data.value = await api.admin.overview()
   } catch (e) {
     showFailToast((e as Error).message)
   }

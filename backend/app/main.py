@@ -24,6 +24,7 @@ from app.services.practice import PracticeService
 from app.services.scenarios import ScenarioRegistry
 from app.services.speech import SpeechService
 from app.services.wecom import WeComClient
+from app.services.wecom_chat import WeComChatBot
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,8 @@ async def lifespan(app: FastAPI):
         practice = PracticeService(
             graph, PracticeContext(llm=llm, scenarios=scenarios, knowledge=knowledge), sf
         )
+        wecom = WeComClient(settings.wecom)
+        wecom_bot = WeComChatBot(settings.wecom, wecom, practice, scenarios, sf)
         app.state.container = Container(
             settings=settings,
             engine=engine,
@@ -62,8 +65,9 @@ async def lifespan(app: FastAPI):
             llm=llm,
             knowledge=knowledge,
             speech=SpeechService(settings),
-            wecom=WeComClient(settings.wecom),
+            wecom=wecom,
             practice=practice,
+            wecom_bot=wecom_bot,
         )
         logger.info("服务启动：模型=%s，场景 %d 个", settings.llm.provider, len(scenarios.scenarios))
         yield

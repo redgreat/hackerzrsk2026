@@ -1,15 +1,31 @@
 import type {
+  AdminScenario,
+  AdminSession,
+  AdminSessionDetail,
+  AdminUser,
+  KnowledgeItem,
   MyStats,
   Overview,
+  Paged,
   Report,
   ScenarioCard,
   ScenarioDetail,
   SessionDetail,
   SessionSummary,
   StreamEvent,
+  TrendPoint,
+  UsagePage,
   User,
 } from '@/types'
 import { get, post, rawFetch } from './http'
+
+type Query = Record<string, string | number | null | undefined>
+
+function qs(q: Query): string {
+  const p = new URLSearchParams()
+  for (const [k, v] of Object.entries(q)) if (v !== null && v !== undefined && v !== '') p.set(k, String(v))
+  return p.toString()
+}
 
 interface LoginResult {
   token: string
@@ -18,7 +34,7 @@ interface LoginResult {
 
 export const api = {
   authConfig: (redirectUri: string) =>
-    get<{ wecom_enabled: boolean; oauth_url: string | null; dev_login_enabled: boolean }>(
+    get<{ wecom_enabled: boolean; oauth_url: string | null; qr_url: string | null; dev_login_enabled: boolean }>(
       `/auth/config?redirect_uri=${encodeURIComponent(redirectUri)}`,
     ),
   wecomLogin: (code: string) => post<LoginResult>('/auth/wecom', { code }),
@@ -37,7 +53,17 @@ export const api = {
   report: (id: string) => get<Report>(`/sessions/${id}/report`),
 
   myStats: () => get<MyStats>('/stats/me'),
-  overview: () => get<Overview>('/stats/overview'),
+
+  admin: {
+    overview: () => get<Overview>('/admin/overview'),
+    trend: (days: number) => get<TrendPoint[]>(`/admin/trend?days=${days}`),
+    users: (q: Query) => get<Paged<AdminUser>>(`/admin/users?${qs(q)}`),
+    sessions: (q: Query) => get<Paged<AdminSession>>(`/admin/sessions?${qs(q)}`),
+    session: (id: string) => get<AdminSessionDetail>(`/admin/sessions/${id}`),
+    usage: (q: Query) => get<UsagePage>(`/admin/usage?${qs(q)}`),
+    scenarios: () => get<AdminScenario[]>('/admin/scenarios'),
+    knowledge: () => get<KnowledgeItem[]>('/admin/knowledge'),
+  },
 
   speechConfig: () => get<{ asr_enabled: boolean; tts_enabled: boolean }>('/speech/config'),
   asr: (blob: Blob, durationMs: number, sessionId?: string) => {
