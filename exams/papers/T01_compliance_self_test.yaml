@@ -1,0 +1,13 @@
+# 合规红线自测（不限次，交卷即看解析）
+id: T01
+name: 合规红线自测
+kind: self_test
+description: 随机 10 道合规题，交卷后立即查看解析，可反复练习。
+department: [催收, 贷后]
+pass_score: 90
+sections:
+  - type: quiz
+    title: 合规红线
+    weight: 100
+    tags: [合规]
+    count: 10

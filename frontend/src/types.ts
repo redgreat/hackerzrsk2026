@@ -41,6 +41,8 @@ export interface SessionSummary {
   id: string
   scenario_id: string
   scenario_name: string
+  mode: 'practice' | 'exam'
+  exam_attempt_id: string | null
   status: Outcome
   turns: number
   hints_used: number
@@ -84,6 +86,7 @@ export interface Report {
   trust_curve: number[]
   inner_thoughts: InnerThought[]
   references: string[]
+  red_lines?: { turn: number | null; red_line: string }[]
 }
 
 export interface MyStats {
@@ -228,4 +231,173 @@ export interface KnowledgeItem {
   scenario_ids: string[]
   has_embedding: boolean
   preview: string
+}
+
+// ---------- 账号 ----------
+
+export interface AuthConfig {
+  wecom_enabled: boolean
+  oauth_url: string | null
+  qr_url: string | null
+  dev_login_enabled: boolean
+  password_enabled: boolean
+  register_enabled: boolean
+  require_approval: boolean
+}
+
+export type AccountStatus = 'pending' | 'active' | 'rejected' | 'disabled'
+
+export interface Account {
+  id: number
+  userid: string
+  name: string
+  department: string
+  source: string
+  status: AccountStatus
+  role: 'user' | 'admin'
+  has_password: boolean
+  created_at: string | null
+  reviewed_at: string | null
+  last_login_at: string | null
+}
+
+// ---------- 优质录音 ----------
+
+export interface TranscriptLine {
+  begin_ms: number
+  end_ms: number
+  speaker: 'agent' | 'customer'
+  text: string
+}
+
+export interface RecordingAnalysis {
+  title: string
+  summary: string
+  customer_type: string
+  outcome: string
+  tags: string[]
+  stages: { name: string; start_index: number }[]
+  highlights: { index: number; technique: string; why: string }[]
+  dimension_scores: { name: string; score: number; comment: string }[]
+  compliance_issues: string[]
+  learning_points: string[]
+  related_scenario_ids: string[]
+}
+
+export type RecordingStatus = 'imported' | 'transcribing' | 'transcribed' | 'analyzing' | 'ready' | 'failed'
+
+export interface RecordingCard {
+  id: number
+  title: string
+  customer_type: string
+  outcome: string | null
+  summary: string | null
+  tags: string[]
+  duration_seconds: number | null
+  status: RecordingStatus
+  error: string | null
+  published: boolean
+  play_count: number
+  created_at: string | null
+  published_at: string | null
+}
+
+export interface ChoiceQuestion {
+  id: number
+  recording_id: number
+  type: 'single' | 'multi' | 'judge'
+  stem: string
+  options: string[]
+  answer?: number[]
+  explanation?: string
+  status?: 'pending' | 'approved' | 'rejected'
+}
+
+export interface RecordingDetail extends RecordingCard {
+  audio_url: string
+  transcript: TranscriptLine[]
+  analysis: RecordingAnalysis | null
+  questions: ChoiceQuestion[]
+  related_scenarios?: { id: string; name: string }[]
+  source_key?: string
+}
+
+export interface RecordingPage extends Paged<RecordingCard> {
+  customer_types: { name: string; count: number }[]
+}
+
+export interface AdminRecordingPage extends Paged<RecordingCard & { pending_questions: number }> {
+  status_counts: Record<string, number>
+}
+
+// ---------- 考试 ----------
+
+export type SectionType = 'quiz' | 'listening' | 'roleplay'
+
+export interface PaperCard {
+  id: string
+  name: string
+  kind: 'exam' | 'self_test'
+  description: string
+  pass_score: number
+  time_limit_minutes: number | null
+  max_attempts: number | null
+  sections: { type: SectionType; title: string; weight: number }[]
+  attempts: number
+  best_score: number | null
+  passed: boolean
+  ongoing_attempt_id: string | null
+}
+
+export interface AttemptSummary {
+  id: string
+  paper_id: string
+  paper_name: string
+  kind: 'exam' | 'self_test'
+  status: 'in_progress' | 'submitted'
+  score: number | null
+  passed: boolean | null
+  started_at: string | null
+  deadline_at: string | null
+  submitted_at: string | null
+}
+
+export interface QuizItem {
+  key: string
+  type: 'single' | 'multi' | 'judge'
+  stem: string
+  options: string[]
+  chosen: number[]
+  recording?: { id: number; title: string; audio_url: string; duration_seconds: number | null }
+  answer?: number[]
+  explanation?: string
+  credit?: number | null
+}
+
+export interface RoleplayItem {
+  key: string
+  scenario_id: string
+  scenario_name: string
+  session_id: string | null
+  session_status: string | null
+  report_ready: boolean
+  score: number | null
+}
+
+export type AttemptSection =
+  | { type: 'quiz' | 'listening'; title: string; weight: number; items: QuizItem[] }
+  | { type: 'roleplay'; title: string; weight: number; items: RoleplayItem[] }
+
+export interface AttemptDetail extends AttemptSummary {
+  pass_score: number | null
+  time_limit_minutes: number | null
+  server_time: string
+  revealed: boolean
+  result: { total: number; sections: { title: string; type: SectionType; weight: number; score: number }[] } | null
+  sections: AttemptSection[]
+  user?: { id: number; userid: string; name: string; department: string }
+}
+
+export interface AdminAttempt extends AttemptSummary {
+  user: { id: number; userid: string; name: string; department: string }
 }

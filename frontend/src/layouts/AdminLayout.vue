@@ -6,12 +6,18 @@ import { useRoute, useRouter } from 'vue-router'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-const active = computed(() => route.path)
+const active = computed(() => {
+  const m = route.path.match(/^\/admin\/[^/]+/)
+  return m ? m[0] : route.path
+})
 
 const menus = [
   { path: '/admin', label: '数据概览' },
   { path: '/admin/sessions', label: '练习记录' },
+  { path: '/admin/accounts', label: '账号审核' },
   { path: '/admin/users', label: '员工' },
+  { path: '/admin/recordings', label: '优秀录音' },
+  { path: '/admin/exams', label: '考试成绩' },
   { path: '/admin/usage', label: '模型用量' },
   { path: '/admin/scenarios', label: '场景配置' },
   { path: '/admin/knowledge', label: '话术知识库' },

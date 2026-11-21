@@ -40,6 +40,7 @@ export const PURPOSE_LABEL: Record<string, string> = {
   evaluator: '轮次评估',
   coach: '教练报告',
   hint: '求助提示',
+  analyst: '录音分析',
   embedding: '知识向量',
   asr: '语音识别',
   tts: '语音合成',
@@ -51,4 +52,28 @@ export const OUTCOME_EL_TAG: Record<Outcome, 'primary' | 'success' | 'warning' |
   hangup: 'danger',
   max_turns: 'warning',
   user_end: 'info',
+}
+
+export const RECORDING_STATUS: Record<string, { label: string; type: 'primary' | 'success' | 'warning' | 'danger' | 'info' }> = {
+  imported: { label: '待处理', type: 'info' },
+  transcribing: { label: '转写中', type: 'primary' },
+  transcribed: { label: '已转写', type: 'primary' },
+  analyzing: { label: '分析中', type: 'primary' },
+  ready: { label: '已完成', type: 'success' },
+  failed: { label: '失败', type: 'danger' },
+}
+
+export const ACCOUNT_STATUS: Record<string, { label: string; type: 'primary' | 'success' | 'warning' | 'danger' | 'info' }> = {
+  pending: { label: '待审核', type: 'warning' },
+  active: { label: '正常', type: 'success' },
+  rejected: { label: '已驳回', type: 'danger' },
+  disabled: { label: '已停用', type: 'info' },
+}
+
+export const QUESTION_TYPE: Record<string, string> = { single: '单选', multi: '多选', judge: '判断' }
+
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds == null) return '--:--'
+  const s = Math.max(0, Math.round(seconds))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }

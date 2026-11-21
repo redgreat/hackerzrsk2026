@@ -5,9 +5,11 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
+from app.services.exams import ExamService
 from app.services.knowledge import KnowledgeBase
 from app.services.llm import LLMGateway
 from app.services.practice import PracticeService
+from app.services.recordings import RecordingService
 from app.services.scenarios import ScenarioRegistry
 from app.services.speech import SpeechService
 from app.services.wecom import WeComClient
@@ -26,3 +28,5 @@ class Container:
     wecom: WeComClient
     practice: PracticeService
     wecom_bot: WeComChatBot
+    recordings: RecordingService
+    exams: ExamService

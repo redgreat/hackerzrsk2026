@@ -16,6 +16,10 @@ GOOD_QUESTION = re.compile(r"[?？]|哪些|怎么|什么|如何|是否|能不能
 EMPATHY = re.compile(r"理解|明白|抱歉|不好意思|确实|您说得对|辛苦")
 PUSHY = re.compile(r"最低价|马上签|今天必须|打折|便宜点|别家.*(差|垃圾)")
 VIOLATION = re.compile(r"保证|绝对|百分百|100%|肯定没问题")
+# 催收红线（威胁恐吓、辱骂、冒充公检法、向第三方施压等）
+RED_LINE = re.compile(
+    r"坐牢|抓你|弄死|找人上门|曝光你|告诉你(家人|单位|领导|同事)|公安局|派出所|法院的人|骗子|老赖|滚"
+)
 
 
 def _text(msg: BaseMessage) -> str:
@@ -61,6 +65,16 @@ def _stub_evaluator(system: str, user: str) -> dict:
     if len(said) < 6:
         delta -= 3
         behaviors.append("回答过于简短")
+    red_line = None
+    red_lines = (
+        re.findall(r"^- (.+)$", system.split("## 合规红线", 1)[1].split("\n\n", 1)[0], re.M)
+        if "## 合规红线" in system
+        else []
+    )
+    if red_lines and RED_LINE.search(said):
+        red_line = red_lines[0]
+        delta -= 20
+        behaviors.append("触犯红线")
     resolved = []
     for oid, hints in re.findall(r"- \[(\w+)\][^\n]*?化解要点：([^\n]*)", system):
         keywords = [k.strip() for k in re.split(r"[，,、;；]", hints) if k.strip()]
@@ -74,6 +88,7 @@ def _stub_evaluator(system: str, user: str) -> dict:
         "behaviors": behaviors or ["表达一般"],
         "inner_thought": thought,
         "hangup": False,
+        "red_line": red_line,
         "reason": "Stub 规则评估",
     }
 
@@ -102,6 +117,50 @@ def _stub_coach(system: str, user: str) -> dict:
     }
 
 
+def _stub_analyst(system: str, user: str) -> dict:
+    dims = re.findall(r"^- (.+?)：5 分=", system, re.M)
+    lines = re.findall(r"^\[(\d+)\] (坐席|客户)：(.+)$", user, re.M)
+    agent = [int(i) for i, who, _ in lines if who == "坐席"]
+    scenario_ids = re.findall(r"^- (C\d+)：", system, re.M)
+    return {
+        "title": "首逾提醒并锁定当日还款",
+        "summary": "坐席核实身份后提醒逾期，了解是换卡忘转，告知征信影响并锁定当天下午还款。",
+        "customer_type": "忘记还款",
+        "outcome": "承诺还款",
+        "tags": ["身份核实", "征信告知", "锁定承诺"],
+        "stages": [
+            {"name": "开场核实", "start_index": 0},
+            {"name": "确认收尾", "start_index": max(len(lines) - 2, 0)},
+        ],
+        "highlights": [
+            {"index": i, "technique": t, "why": "表达具体、语气友好，值得模仿。"}
+            for i, t in zip(agent[:3], ["自报家门", "共情接话", "锁定承诺"], strict=False)
+        ],
+        "dimension_scores": [
+            {"name": d, "score": 5 if i % 2 == 0 else 4, "comment": "表现到位。"} for i, d in enumerate(dims)
+        ],
+        "compliance_issues": [],
+        "learning_points": ["先核实本人再谈欠款", "用客户的良好记录做正向激励", "收尾复述金额、时间与方式"],
+        "related_scenario_ids": scenario_ids[:1],
+        "questions": [
+            {
+                "type": "single",
+                "stem": "坐席在说明来电目的前，首先做了什么？",
+                "options": ["直接报欠款金额", "核实是否客户本人", "告知将上门催收", "询问客户收入"],
+                "answer": [1],
+                "explanation": "先核实本人身份，避免向第三方泄露债务信息。",
+            },
+            {
+                "type": "judge",
+                "stem": "坐席在收尾时复述了还款时间与方式，这样做有助于客户兑现承诺。",
+                "options": ["正确", "错误"],
+                "answer": [0],
+                "explanation": "复述承诺能让客户确认并加深印象，提高兑现率。",
+            },
+        ],
+    }
+
+
 def _stub_hint() -> str:
     return "先认同客户的顾虑，再用开放式问题挖掘他最在意的点，例如：“您最担心的是哪方面？”"
 
@@ -123,6 +182,8 @@ class StubChatModel(BaseChatModel):
                 return json.dumps(_stub_coach(system, user), ensure_ascii=False)
             case "hint":
                 return _stub_hint()
+            case "analyst":
+                return json.dumps(_stub_analyst(system, user), ensure_ascii=False)
             case _:
                 return _stub_customer(system)
 

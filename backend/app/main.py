@@ -18,9 +18,11 @@ from app.core.logging import setup_logging
 from app.db.session import create_engine, create_session_factory
 from app.graph.builder import build_practice_graph
 from app.graph.state import PracticeContext
+from app.services.exams import ExamRegistry, ExamService
 from app.services.knowledge import KnowledgeBase
 from app.services.llm import LLMGateway
 from app.services.practice import PracticeService
+from app.services.recordings import RecordingService
 from app.services.scenarios import ScenarioRegistry
 from app.services.speech import SpeechService
 from app.services.wecom import WeComClient
@@ -57,6 +59,10 @@ async def lifespan(app: FastAPI):
         )
         wecom = WeComClient(settings.wecom)
         wecom_bot = WeComChatBot(settings.wecom, wecom, practice, scenarios, sf)
+        recordings = RecordingService(settings, sf, llm, scenarios, knowledge)
+        exams = ExamService(
+            ExamRegistry.load(settings.exams_dir, scenarios), sf, practice, recordings, scenarios
+        )
         app.state.container = Container(
             settings=settings,
             engine=engine,
@@ -68,9 +74,12 @@ async def lifespan(app: FastAPI):
             wecom=wecom,
             practice=practice,
             wecom_bot=wecom_bot,
+            recordings=recordings,
+            exams=exams,
         )
         logger.info("服务启动：模型=%s，场景 %d 个", settings.llm.provider, len(scenarios.scenarios))
         yield
+        await recordings.shutdown()
         await practice.shutdown()
     finally:
         await pool.close()

@@ -20,6 +20,7 @@
 | [doc/05-data-and-security.md](doc/05-data-and-security.md) | 参考项目/客户信息接入规划、脱敏与保密规则 |
 | [doc/06-milestones-and-delivery.md](doc/06-milestones-and-delivery.md) | 里程碑、比赛交付物、视频脚本、成本测算 |
 | [doc/07-open-questions.md](doc/07-open-questions.md) | 待决事项清单 |
+| [doc/08-collection-training.md](doc/08-collection-training.md) | 催收培训考试系统：注册审核、录音库、转写分析、题库考试 |
 
 ## 技术栈
 
@@ -42,7 +43,7 @@ hackerzr2026/
 ├── backend/
 │   ├── app/
 │   │   ├── __main__.py       # 启动入口 python -m app（处理 Windows 事件循环）
-│   │   ├── cli.py            # init-db / ingest-knowledge / check-scenarios
+│   │   ├── cli.py            # init-db / ingest-knowledge / check-scenarios / create-admin / import-recordings / process-recordings
 │   │   ├── main.py           # create_app + lifespan（组装依赖容器）
 │   │   ├── api/              # HTTP 路由：auth / scenarios / sessions(SSE) / speech / stats / health
 │   │   ├── graph/            # LangGraph：state、schemas（结构化输出）、rules（纯规则）、nodes、builder
@@ -68,7 +69,9 @@ hackerzr2026/
 - 计量记录写入 `usage_scope()`，由 `PracticeService` 统一落库 `model_usage` 并累加到会话成本；不记录对话内容。
 - 客户回复的流式片段通过 `runtime.stream_writer` 推送，再经 SSE 下发。图运行放在后台任务中，客户端断开不会中断报告生成。会话锁目前是单进程实现，多实例部署时需改为分布式锁。
 - 练习结束前，接口不得下发客户内心独白、信任值、隐藏需求和异议。
-- 新增场景只需新增 YAML；新增评分表放 `scenarios/rubrics/`。改完执行 `python -m app.cli check-scenarios` 校验。
+- 新增场景只需新增 YAML（催收场景放 `scenarios/collection/`）；新增评分表放 `scenarios/rubrics/`。题库/试卷放 `exams/`。改完执行 `python -m app.cli check-scenarios` 校验。
+- 练习会话有 `mode` 字段：`practice`（可用求助）与 `exam`（禁用求助，仅正式考试试卷，自测仍可用求助）。对练考试通过 `exam_attempt_id` 关联考卷。
+- 录音转写走 `services/file_asr.py`（stub / dashscope Paraformer），录音分析走 llm 网关 `purpose="analyst"`；转写稿入库前必须经 `recording_rules.py` 脱敏。真实录音与转写只放 `data/private/`。
 
 ## 开发约定
 

@@ -11,7 +11,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 PROJECT_DIR = BACKEND_DIR.parent
 DEV_JWT_SECRET = "dev-only-insecure-secret-change-me-in-prod"
 
-Purpose = Literal["customer", "evaluator", "coach", "hint"]
+Purpose = Literal["customer", "evaluator", "coach", "hint", "analyst"]
 
 
 class ModelPrice(BaseModel):
@@ -42,6 +42,8 @@ class LLMSettings(BaseModel):
     evaluator: PurposeModel = PurposeModel(temperature=0.1, max_tokens=600)
     coach: PurposeModel = PurposeModel(temperature=0.2, max_tokens=3000)
     hint: PurposeModel = PurposeModel(temperature=0.4, max_tokens=300)
+    # 优质录音分析（亮点话术、合规点评、听录音题目）
+    analyst: PurposeModel = PurposeModel(temperature=0.2, max_tokens=4000)
     pricing: dict[str, ModelPrice] = Field(
         default_factory=lambda: {"deepseek-chat": ModelPrice(input=2.0, output=8.0)}
     )
@@ -91,6 +93,37 @@ class WeComSettings(BaseModel):
         return bool(self.enabled and self.token and self.encoding_aes_key)
 
 
+class AuthSettings(BaseModel):
+    # H5 账号密码登录（不依赖企业微信）
+    password_enabled: bool = True
+    # 开放注册；新账号需管理员审核后才能登录
+    register_enabled: bool = True
+    require_approval: bool = True
+
+
+class RecordingSettings(BaseModel):
+    """优质录音：来源（dbmcp）、转写（百炼 Paraformer）。"""
+
+    asr_provider: Literal["none", "stub", "dashscope"] = "none"
+    dashscope_api_key: str | None = None
+    dashscope_base_url: str = "https://dashscope.aliyuncs.com"
+    asr_model: str = "paraformer-v2"
+    # 呼叫中心录音若为双声道（坐席/客户各一轨），填 [0, 1] 按声道区分说话人；单声道留空用说话人分离
+    channel_ids: list[int] = Field(default_factory=list)
+    poll_interval_seconds: float = 3
+    poll_timeout_seconds: float = 900
+    # 元 / 分钟（paraformer-v2 约 0.288 元/小时）
+    asr_price_per_minute: float = 0.0048
+    dbmcp_url: str = "https://mcp.lunz.cn/mcp/sse"
+    dbmcp_key: str | None = None
+    connection_id: int = 51
+    shard_count: int = 20
+    # 录音地址为相对路径时拼接的前缀（如呼叫中心录音服务器地址）
+    audio_base_url: str | None = None
+    # AI 分析优质录音时使用的评分表
+    rubric_id: str = "collection_default"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
@@ -112,6 +145,7 @@ class Settings(BaseSettings):
 
     scenarios_dir: Path = PROJECT_DIR / "scenarios"
     knowledge_dir: Path = PROJECT_DIR / "knowledge"
+    exams_dir: Path = PROJECT_DIR / "exams"
     frontend_dist: Path = PROJECT_DIR / "frontend" / "dist"
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
 
@@ -123,6 +157,8 @@ class Settings(BaseSettings):
     embedding: EmbeddingSettings = EmbeddingSettings()
     speech: SpeechSettings = SpeechSettings()
     wecom: WeComSettings = WeComSettings()
+    auth: AuthSettings = AuthSettings()
+    recordings: RecordingSettings = RecordingSettings()
 
     @property
     def psycopg_conninfo(self) -> str:
@@ -135,6 +171,8 @@ class Settings(BaseSettings):
                 raise RuntimeError("生产环境必须设置不少于 32 位的 JWT_SECRET")
             if self.llm.provider == "stub":
                 raise RuntimeError("生产环境不能使用 stub 模型")
+            if self.recordings.asr_provider == "stub":
+                raise RuntimeError("生产环境不能使用 stub 录音转写")
 
 
 @lru_cache

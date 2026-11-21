@@ -13,14 +13,16 @@
 | 后端 | Python 3.13、FastAPI（原生 SSE 流式）、SQLAlchemy 2 async、Alembic、uv |
 | 数据库 | PostgreSQL 16+ + pgvector（业务表、会话检查点、长期记忆、话术向量库同库） |
 | 模型 | OpenAI 兼容接口（DeepSeek / 通义千问 / 豆包 / 私有部署均可），内置离线 Stub 模型 |
-| 前端 | Vue 3 + Vite + TypeScript + Vant 4（移动端）+ ECharts，企业微信 OAuth 免登 |
+| 前端 | Vue 3 + Vite + TypeScript + Vant 4（移动端）+ ECharts，企业微信 OAuth 免登 / 注册+密码登录 |
+| 语音转写 | 录音文件转写支持阿里云百炼 Paraformer（`RECORDINGS__ASR_PROVIDER=dashscope`）或离线 Stub |
 
 ## 目录
 
 ```
 backend/        FastAPI + LangGraph 服务（app/、migrations/、tests/）
-frontend/       H5 对练页面
-scenarios/      场景 YAML；scenarios/rubrics/ 为评分表 YAML
+frontend/       H5 页面（练习 / 优秀录音 / 考试 / 管理后台）
+scenarios/      场景 YAML；scenarios/collection/ 为催收场景；scenarios/rubrics/ 为评分表
+exams/          题库与试卷 YAML（questions/ 题库，papers/ 试卷定义）
 knowledge/      话术知识库 Markdown（RAG，内容必须已脱敏）
 doc/            项目文档
 ```
@@ -89,6 +91,18 @@ cd frontend && pnpm build                          # 类型检查 + 构建
 - 场景配置、话术知识库：只读展示（内容仍由 YAML 与 Markdown 维护）
 
 管理后台所有接口只读；对话内容与客户内心独白仅对管理员开放，请按公司保密制度使用。
+
+## 催收培训考试系统（H5）
+
+面向贷后/催收新人的培训考核模块，详见 [doc/08-collection-training.md](doc/08-collection-training.md)。与陪练共用同一套引擎，新增能力：
+
+- **账号体系**：开放注册 + 管理员审核（`/admin/accounts`），密码登录；审核未通过不能登录
+- **优秀录音**：H5「录音」页按客户类型检索、边听边看逐句转写（点句跳听）、AI 生成的亮点话术点评与合规提醒、答题自测
+- **录音加工**：`uv run python -m app.cli import-recordings`（dbmcp 查询或本地清单）→ `process-recordings`（转写 + AI 分析 + 出题）→ 管理后台审核发布
+- **题库试卷**：`exams/` 下 YAML 定义，支持选择题、听录音题、情景对练三种题型；`python -m app.cli check-scenarios` 一并校验
+- **考试与自测**：H5「考试」页支持自测（不限次、交卷给解析）与正式考试（限时、限次、对练中禁用求助、红线违规总分封顶）
+
+环境变量：`RECORDINGS__ASR_PROVIDER`（stub/dashscope）、`DBMCP__*`（数据源查询）、`DASHSCOPE_API_KEY`（Paraformer）。录音文件、转写稿等真实数据只放 `data/private/`，不入库到 git。
 
 ## 发布与部署
 

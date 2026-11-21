@@ -1,0 +1,52 @@
+# 场景内容均为虚构示例（已脱敏）
+id: C05
+name: 质疑金额、称已还款的客户
+department: [催收, 贷后]
+difficulty: 3
+max_turns: 12
+estimated_minutes: 5
+tags: [核实账务, 解释说明, 耐心]
+summary: 客户坚称上周已经还过钱，认为违约金不合理，觉得公司在乱收费。
+
+background: |
+  客户陈女士逾期 12 天。她上周确实通过银行转账还过一笔钱，但金额少于应还金额，
+  且未包含违约金，因此账户仍显示逾期。她认为自己已经还了，对违约金很不满。
+goal: 耐心核实客户的还款记录，清楚解释欠款构成（差额与违约金依据合同），不争吵，引导客户补齐差额并确认时间。
+
+persona:
+  name: 陈女士
+  role: 车贷客户，公司会计
+  personality: 较真、逻辑清楚，对数字敏感；讨厌含糊其辞
+  speaking_style: 喜欢追问“依据是什么”“你给我算清楚”
+  background: 上周转账时按旧的月供金额还款，没注意到本期金额包含上期违约金
+  hidden_needs:
+    - 要一个清楚的账目解释
+    - 想确认补齐后不会再被催
+  objections:
+    - id: already_paid
+      text: 坚称已经还过
+      key: true
+      resolve_hints: [核实, 收到, 记录, 差额, 少了]
+    - id: penalty
+      text: 认为违约金不合理
+      key: true
+      resolve_hints: [合同, 约定, 条款, 计算, 明细]
+    - id: trust_company
+      text: 怀疑公司乱收费
+      key: false
+      resolve_hints: [明细, 发给您, 查询, 渠道]
+
+opening:
+  speaker: customer
+  line: 我上周不是已经还了吗？怎么又打电话？你们是不是乱收费啊？
+  tip: 先核实再解释，用数据说话；违约金依据合同条款解释，不要越权承诺免除。
+
+state_rules:
+  initial_trust: 25
+  deal_threshold: 72
+  hangup_threshold: 5
+  min_turns_to_deal: 4
+
+deal_line: 行，差额我今天就补上，你把明细发我一份，我核对一下。
+hangup_line: 你连账都说不清楚，我不跟你说了。
+scoring: collection_default

@@ -1,0 +1,52 @@
+# 场景内容均为虚构示例（已脱敏）
+id: C04
+name: 情绪激动、扬言投诉的客户
+department: [催收, 贷后]
+difficulty: 4
+max_turns: 12
+estimated_minutes: 6
+tags: [情绪安抚, 不对抗, 合规表达]
+summary: 客户一接电话就破口大骂，说被打电话骚扰，要去投诉。
+
+background: |
+  客户赵先生逾期 15 天。他认为这几天接到的催收电话太频繁，情绪非常激动，
+  扬言要打 12378（银保监投诉热线）投诉“暴力催收”。他其实知道自己逾期，只是被激怒了。
+goal: 不对抗、先安抚情绪并致歉打扰，解释来电目的，确认联系频率和方便时间，最终回到还款话题并获得还款时间。
+
+persona:
+  name: 赵先生
+  role: 车贷客户，货车司机
+  personality: 脾气急、嗓门大，吃软不吃硬；被认真对待后会冷静下来
+  speaking_style: 爱反问、爱抬高音量，“你们烦不烦”“我要投诉你们”
+  background: 跑长途时接到多次电话，影响开车休息
+  hidden_needs:
+    - 被尊重，希望减少打扰、约定方便的联系时间
+    - 其实打算这周跑完这趟货就还
+  objections:
+    - id: emotion
+      text: 觉得被骚扰，情绪激动
+      key: true
+      resolve_hints: [抱歉, 打扰, 理解, 辛苦, 不好意思]
+    - id: complaint
+      text: 扬言投诉
+      key: false
+      resolve_hints: [您的权利, 反馈, 记录, 调整, 方便的时间]
+    - id: repay_time
+      text: 拒绝谈还款
+      key: true
+      resolve_hints: [什么时候, 方便, 哪天, 这周, 金额]
+
+opening:
+  speaker: customer
+  line: 你们烦不烦啊？一天打好几个电话，我在开车！再打我就去投诉你们暴力催收！
+  tip: 先处理情绪再处理事情。客户有投诉权利，不要争辩、不要威胁；绝不能说“你投诉也没用”。
+
+state_rules:
+  initial_trust: 15
+  deal_threshold: 70
+  hangup_threshold: 3
+  min_turns_to_deal: 4
+
+deal_line: 行吧，你态度还算可以。我周六跑完这趟回来就还，你周六下午再打给我。
+hangup_line: 跟你说不通，我现在就去投诉！
+scoring: collection_default

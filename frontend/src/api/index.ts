@@ -1,4 +1,14 @@
 import type {
+  Account,
+  AdminAttempt,
+  AdminRecordingPage,
+  AttemptDetail,
+  AttemptSummary,
+  AuthConfig,
+  ChoiceQuestion,
+  PaperCard,
+  RecordingDetail,
+  RecordingPage,
   AdminScenario,
   AdminSession,
   AdminSessionDetail,
@@ -17,7 +27,7 @@ import type {
   UsagePage,
   User,
 } from '@/types'
-import { get, post, rawFetch } from './http'
+import { get, patch, post, put, rawFetch } from './http'
 
 type Query = Record<string, string | number | null | undefined>
 
@@ -33,10 +43,12 @@ interface LoginResult {
 }
 
 export const api = {
-  authConfig: (redirectUri: string) =>
-    get<{ wecom_enabled: boolean; oauth_url: string | null; qr_url: string | null; dev_login_enabled: boolean }>(
-      `/auth/config?redirect_uri=${encodeURIComponent(redirectUri)}`,
-    ),
+  authConfig: (redirectUri: string) => get<AuthConfig>(`/auth/config?redirect_uri=${encodeURIComponent(redirectUri)}`),
+  register: (body: { userid: string; name: string; department: string; password: string }) =>
+    post<{ status: string; message?: string; token?: string; user?: User }>('/auth/register', body),
+  login: (userid: string, password: string) => post<LoginResult>('/auth/login', { userid, password }),
+  changePassword: (oldPassword: string, newPassword: string) =>
+    post<{ ok: boolean }>('/auth/password', { old_password: oldPassword, new_password: newPassword }),
   wecomLogin: (code: string) => post<LoginResult>('/auth/wecom', { code }),
   devLogin: (userid: string, name: string, department: string) =>
     post<LoginResult>('/auth/dev', { userid, name, department }),
@@ -54,6 +66,21 @@ export const api = {
 
   myStats: () => get<MyStats>('/stats/me'),
 
+  recordings: (q: Query) => get<RecordingPage>(`/recordings?${qs(q)}`),
+  recording: (id: number | string) => get<RecordingDetail>(`/recordings/${id}`),
+  recordingPlayed: (id: number) => post<{ ok: boolean }>(`/recordings/${id}/played`),
+  checkQuestion: (rid: number, qid: number, answer: number[]) =>
+    post<{ correct: boolean; answer: number[]; explanation: string }>(`/recordings/${rid}/questions/${qid}/check`, { answer }),
+
+  papers: () => get<PaperCard[]>('/exams'),
+  myAttempts: () => get<AttemptSummary[]>('/exams/attempts'),
+  startExam: (paperId: string) => post<AttemptDetail>(`/exams/${paperId}/start`),
+  attempt: (id: string) => get<AttemptDetail>(`/exams/attempts/${id}`),
+  saveAnswers: (id: string, answers: Record<string, number[]>) =>
+    put<{ saved: number }>(`/exams/attempts/${id}/answers`, { answers }),
+  startRoleplay: (id: string, key: string) => post<{ session_id: string }>(`/exams/attempts/${id}/roleplay`, { key }),
+  submitExam: (id: string) => post<AttemptDetail>(`/exams/attempts/${id}/submit`),
+
   admin: {
     overview: () => get<Overview>('/admin/overview'),
     trend: (days: number) => get<TrendPoint[]>(`/admin/trend?days=${days}`),
@@ -63,6 +90,30 @@ export const api = {
     usage: (q: Query) => get<UsagePage>(`/admin/usage?${qs(q)}`),
     scenarios: () => get<AdminScenario[]>('/admin/scenarios'),
     knowledge: () => get<KnowledgeItem[]>('/admin/knowledge'),
+
+    accounts: (q: Query) => get<Paged<Account> & { pending: number }>(`/admin/accounts?${qs(q)}`),
+    reviewAccount: (id: number, action: 'approve' | 'reject' | 'disable' | 'enable') =>
+      post<Account>(`/admin/accounts/${id}/review`, { action }),
+    setRole: (id: number, role: 'user' | 'admin') => post<Account>(`/admin/accounts/${id}/role`, { role }),
+    resetPassword: (id: number, password: string) => post<{ ok: boolean }>(`/admin/accounts/${id}/password`, { password }),
+
+    recordings: (q: Query) => get<AdminRecordingPage>(`/admin/recordings?${qs(q)}`),
+    addRecording: (audioUrl: string, title: string) =>
+      post<{ created: number }>('/admin/recordings', { audio_url: audioUrl, title }),
+    recording: (id: number | string) => get<RecordingDetail>(`/admin/recordings/${id}`),
+    updateRecording: (
+      id: number,
+      body: { title?: string; customer_type?: string; tags?: string[]; published?: boolean },
+    ) => patch<RecordingDetail>(`/admin/recordings/${id}`, body),
+    processRecording: (id: number, force = false) => post<{ accepted: boolean }>(`/admin/recordings/${id}/process`, { force }),
+    updateQuestion: (
+      id: number,
+      body: Partial<Pick<ChoiceQuestion, 'stem' | 'options' | 'answer' | 'explanation' | 'status'>>,
+    ) => patch<ChoiceQuestion>(`/admin/recording-questions/${id}`, body),
+
+    papers: () => get<(Omit<PaperCard, 'attempts' | 'best_score' | 'passed' | 'ongoing_attempt_id'> & { enabled: boolean })[]>('/admin/exams/papers'),
+    attempts: (q: Query) => get<Paged<AdminAttempt>>(`/admin/exams/attempts?${qs(q)}`),
+    attempt: (id: string) => get<AttemptDetail>(`/admin/exams/attempts/${id}`),
   },
 
   speechConfig: () => get<{ asr_enabled: boolean; tts_enabled: boolean }>('/speech/config'),

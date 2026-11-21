@@ -17,6 +17,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY backend/ ./
 COPY scenarios /srv/scenarios
 COPY knowledge /srv/knowledge
+COPY exams /srv/exams
 COPY --from=web /web/dist /srv/frontend/dist
 ENV PATH="/srv/backend/.venv/bin:$PATH"
 RUN useradd --system --no-create-home coach

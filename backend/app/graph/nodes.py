@@ -65,12 +65,21 @@ async def evaluate_turn(state: PracticeState, runtime: Runtime[PracticeContext])
     scenario = ctx.scenarios.get(state["scenario_id"])
     said = state["pending"]["text"].strip()
     turn = state["turn"] + 1
+    rubric = ctx.scenarios.rubric_for(scenario)
     system, user = evaluator_messages_text(
-        scenario, state["trust"], state["open_objections"], state.get("transcript", []), said
+        scenario,
+        state["trust"],
+        state["open_objections"],
+        state.get("transcript", []),
+        said,
+        rubric.red_lines,
     )
     ev = await ctx.llm.structured(
         "evaluator", [SystemMessage(content=system), HumanMessage(content=user)], TurnEvaluation
     )
+    red_line = (ev.red_line or "").strip() or None if rubric.red_lines else None
+    if red_line and ev.trust_delta > -20:
+        ev = ev.model_copy(update={"trust_delta": -20})
     o = rules.apply_evaluation(scenario, state["trust"], state["open_objections"], turn, ev)
     thought = {
         "turn": turn,
@@ -80,6 +89,7 @@ async def evaluate_turn(state: PracticeState, runtime: Runtime[PracticeContext])
         "thought": ev.inner_thought,
         "behaviors": ev.behaviors,
         "resolved": o.resolved,
+        "red_line": red_line,
     }
     return {
         "turn": turn,
@@ -99,7 +109,7 @@ async def evaluate_turn(state: PracticeState, runtime: Runtime[PracticeContext])
                 "trust_delta": o.delta,
                 "trust_after": o.trust_after,
                 "inner_thought": ev.inner_thought,
-                "meta": {"behaviors": ev.behaviors, "resolved": o.resolved},
+                "meta": {"behaviors": ev.behaviors, "resolved": o.resolved, "red_line": red_line},
             }
         ],
         "pending": None,
@@ -183,6 +193,7 @@ async def coach_report(state: PracticeState, runtime: Runtime[PracticeContext]) 
             "improvements": ["大胆开口，先从礼貌开场和一个开放式问题开始"],
             "turn_reviews": [],
             "references": [],
+            "red_lines": [],
         }
     else:
         user_lines = " ".join(t["content"] for t in state.get("transcript", []) if t["role"] == "user")
@@ -193,15 +204,21 @@ async def coach_report(state: PracticeState, runtime: Runtime[PracticeContext]) 
             "coach", [SystemMessage(content=system), HumanMessage(content=user)], CoachOutput
         )
         dims = rules.normalize_dimensions(rubric, out)
+        violations = (
+            rules.red_line_violations(state["inner_thoughts"], out.red_line_violations)
+            if rubric.red_lines
+            else []
+        )
         report = {
             **base,
-            "total_score": rules.total_score(rubric, dims, state["hints_used"]),
+            "total_score": rules.total_score(rubric, dims, state["hints_used"], bool(violations)),
             "summary": out.summary,
             "dimension_scores": [d.model_dump() for d in dims],
             "highlights": out.highlights or ["坚持完成了整场对练"],
             "improvements": out.improvements,
             "turn_reviews": [r.model_dump() for r in out.turn_reviews],
             "references": [s.title for s in refs],
+            "red_lines": violations,
         }
         await save_practice_result(runtime.store, state["user_id"], scenario.id, report)
     runtime.stream_writer({"type": "report_ready", "total_score": report["total_score"]})

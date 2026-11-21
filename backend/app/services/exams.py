@@ -1,0 +1,526 @@
+"""考试与自测：题库/试卷 YAML（exams/）、出题快照、作答保存、交卷判分。
+
+试卷由 section 组成：quiz（题库选择题）/ listening（听录音答题）/ roleplay（AI 情景对练，禁用提示）。
+出题时生成快照（含答案）存入 exam_attempts.sections，作答期间只下发不含答案的视图。
+"""
+
+import logging
+import random
+import uuid
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Literal
+
+import yaml
+from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.core.errors import AppError, Conflict, Forbidden, NotFound
+from app.db.models import ExamAttempt, PracticeSession, User
+from app.services import exam_rules
+from app.services.practice import PracticeService
+from app.services.recordings import RecordingService
+from app.services.scenarios import ScenarioRegistry
+
+logger = logging.getLogger(__name__)
+GRACE_SECONDS = 60
+
+
+class Question(BaseModel):
+    id: str
+    type: Literal["single", "multi", "judge"] = "single"
+    stem: str
+    options: list[str] = Field(default_factory=list)
+    answer: list[int]
+    explanation: str = ""
+    tags: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check(self) -> "Question":
+        if self.type == "judge" and not self.options:
+            self.options = ["正确", "错误"]
+        if len(self.options) < 2:
+            raise ValueError(f"题目 {self.id}: 至少 2 个选项")
+        if not self.answer or any(not 0 <= a < len(self.options) for a in self.answer):
+            raise ValueError(f"题目 {self.id}: 答案下标越界")
+        if self.type != "multi" and len(self.answer) != 1:
+            raise ValueError(f"题目 {self.id}: 单选/判断只能有一个答案")
+        return self
+
+
+class Section(BaseModel):
+    type: Literal["quiz", "listening", "roleplay"]
+    title: str
+    weight: float = Field(gt=0)
+    # quiz：指定题目 id，或按标签随机抽 count 道；listening：随机抽 count 道
+    question_ids: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    count: int | None = Field(None, ge=1)
+    # roleplay：指定场景；设置 count 时从中随机抽取
+    scenario_ids: list[str] = Field(default_factory=list)
+
+
+class Paper(BaseModel):
+    id: str
+    name: str
+    kind: Literal["exam", "self_test"] = "exam"
+    description: str = ""
+    department: list[str] = Field(default_factory=list)
+    pass_score: int = Field(60, ge=0, le=100)
+    time_limit_minutes: int | None = Field(None, ge=1)
+    max_attempts: int | None = Field(None, ge=1)
+    show_answers: bool = True
+    shuffle: bool = True
+    sections: list[Section]
+    enabled: bool = True
+
+
+class ExamRegistry:
+    def __init__(self, papers: dict[str, Paper], questions: dict[str, Question]):
+        self.papers = papers
+        self.questions = questions
+
+    @classmethod
+    def load(cls, root: Path, scenarios: ScenarioRegistry) -> "ExamRegistry":
+        questions: dict[str, Question] = {}
+        for f in sorted((root / "questions").glob("*.y*ml")):
+            for raw in yaml.safe_load(f.read_text(encoding="utf-8")) or []:
+                q = Question.model_validate(raw)
+                if q.id in questions:
+                    raise ValueError(f"题目 id 重复：{q.id}")
+                questions[q.id] = q
+        papers: dict[str, Paper] = {}
+        for f in sorted((root / "papers").glob("*.y*ml")):
+            p = Paper.model_validate(yaml.safe_load(f.read_text(encoding="utf-8")))
+            if p.id in papers:
+                raise ValueError(f"试卷 id 重复：{p.id}")
+            for s in p.sections:
+                missing = [q for q in s.question_ids if q not in questions]
+                if missing:
+                    raise ValueError(f"试卷 {p.id} 引用了不存在的题目：{missing}")
+                missing = [sid for sid in s.scenario_ids if sid not in scenarios.scenarios]
+                if missing:
+                    raise ValueError(f"试卷 {p.id} 引用了不存在的场景：{missing}")
+                if s.type == "quiz" and not s.question_ids and not cls._by_tags(questions, s.tags):
+                    raise ValueError(f"试卷 {p.id} 的 {s.title} 没有可抽的题目")
+                if s.type == "roleplay" and not s.scenario_ids:
+                    raise ValueError(f"试卷 {p.id} 的 {s.title} 未指定场景")
+            papers[p.id] = p
+        return cls(papers, questions)
+
+    @staticmethod
+    def _by_tags(questions: dict[str, Question], tags: list[str]) -> list[Question]:
+        return [q for q in questions.values() if not tags or set(tags) & set(q.tags)]
+
+    def enabled(self) -> list[Paper]:
+        return [p for p in self.papers.values() if p.enabled]
+
+    def get(self, paper_id: str) -> Paper:
+        p = self.papers.get(paper_id)
+        if not p or not p.enabled:
+            raise NotFound(f"试卷不存在：{paper_id}")
+        return p
+
+    def pick_quiz(self, s: Section) -> list[Question]:
+        if s.question_ids:
+            qs = [self.questions[i] for i in s.question_ids]
+            return random.sample(qs, min(s.count, len(qs))) if s.count else qs
+        pool = self._by_tags(self.questions, s.tags)
+        return random.sample(pool, min(s.count or len(pool), len(pool)))
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+class ExamService:
+    def __init__(
+        self,
+        registry: ExamRegistry,
+        sf: async_sessionmaker[AsyncSession],
+        practice: PracticeService,
+        recordings: RecordingService,
+        scenarios: ScenarioRegistry,
+    ):
+        self.registry = registry
+        self.sf = sf
+        self.practice = practice
+        self.recordings = recordings
+        self.scenarios = scenarios
+
+    # ---------- 出题 ----------
+
+    async def _build_sections(self, paper: Paper) -> list[dict]:
+        sections = []
+        for s in paper.sections:
+            items: list[dict] = []
+            if s.type == "quiz":
+                for q in self.registry.pick_quiz(s):
+                    items.append({"key": f"q:{q.id}", **q.model_dump(exclude={"id", "tags"})})
+            elif s.type == "listening":
+                for q in await self.recordings.sample_questions(s.count or 3):
+                    items.append(
+                        {
+                            "key": f"r:{q['id']}",
+                            "type": q["type"],
+                            "stem": q["stem"],
+                            "options": q["options"],
+                            "answer": q["answer"],
+                            "explanation": q["explanation"],
+                            "recording": q["recording"],
+                        }
+                    )
+            else:
+                ids = (
+                    random.sample(s.scenario_ids, min(s.count, len(s.scenario_ids)))
+                    if s.count
+                    else s.scenario_ids
+                )
+                for sid in ids:
+                    sc = self.scenarios.get(sid)
+                    items.append(
+                        {"key": f"s:{sid}", "scenario_id": sid, "scenario_name": sc.name, "session_id": None}
+                    )
+            if paper.shuffle and s.type != "roleplay":
+                random.shuffle(items)
+            if items:  # 例如尚无已审核的录音题目时，跳过该部分
+                sections.append({"type": s.type, "title": s.title, "weight": s.weight, "items": items})
+        if not sections:
+            raise AppError("试卷暂无可用题目，请联系管理员")
+        return sections
+
+    async def _count_attempts(self, db: AsyncSession, user: User, paper_id: str) -> int:
+        return (
+            await db.execute(
+                select(func.count()).where(ExamAttempt.user_id == user.id, ExamAttempt.paper_id == paper_id)
+            )
+        ).scalar_one()
+
+    async def start(self, user: User, paper_id: str) -> dict:
+        paper = self.registry.get(paper_id)
+        async with self.sf() as db:
+            ongoing = (
+                await db.execute(
+                    select(ExamAttempt.id).where(
+                        ExamAttempt.user_id == user.id,
+                        ExamAttempt.paper_id == paper_id,
+                        ExamAttempt.status == "in_progress",
+                    )
+                )
+            ).scalar_one_or_none()
+            used = await self._count_attempts(db, user, paper_id)
+        if ongoing:
+            return await self.view(ongoing, user)
+        if paper.kind == "exam" and paper.max_attempts and used >= paper.max_attempts:
+            raise Forbidden(f"该考试最多可参加 {paper.max_attempts} 次，您已用完")
+        sections = await self._build_sections(paper)
+        now = _now()
+        attempt = ExamAttempt(
+            id=uuid.uuid4(),
+            user_id=user.id,
+            paper_id=paper.id,
+            paper_name=paper.name,
+            kind=paper.kind,
+            sections=sections,
+            answers={},
+            started_at=now,
+            deadline_at=now + timedelta(minutes=paper.time_limit_minutes)
+            if paper.time_limit_minutes
+            else None,
+        )
+        async with self.sf() as db, db.begin():
+            db.add(attempt)
+        return await self.view(attempt.id, user)
+
+    # ---------- 作答 ----------
+
+    async def _owned(self, db: AsyncSession, aid: uuid.UUID, user: User, lock: bool = False) -> ExamAttempt:
+        a = await db.get(ExamAttempt, aid, with_for_update=lock)
+        if a is None:
+            raise NotFound("作答记录不存在")
+        if a.user_id != user.id:
+            raise Forbidden("无权访问该作答记录")
+        return a
+
+    @staticmethod
+    def _expired(a: ExamAttempt, grace: int = 0) -> bool:
+        return a.deadline_at is not None and _now() > a.deadline_at + timedelta(seconds=grace)
+
+    async def save_answers(self, aid: uuid.UUID, user: User, answers: dict[str, list[int]]) -> dict:
+        async with self.sf() as db, db.begin():
+            a = await self._owned(db, aid, user, lock=True)
+            if a.status != "in_progress":
+                raise Conflict("已交卷，不能再修改答案")
+            if self._expired(a, GRACE_SECONDS):
+                raise Conflict("考试时间已到")
+            valid = {it["key"]: it for s in a.sections if s["type"] != "roleplay" for it in s["items"]}
+            merged = dict(a.answers or {})
+            for k, v in answers.items():
+                it = valid.get(k)
+                if it is None:
+                    continue
+                v = sorted({i for i in v if 0 <= i < len(it["options"])})
+                merged[k] = v if it["type"] == "multi" else v[:1]
+            a.answers = merged
+        return {"saved": len(merged)}
+
+    async def start_roleplay(self, aid: uuid.UUID, user: User, key: str) -> dict:
+        async with self.sf() as db:
+            a = await self._owned(db, aid, user)
+        if a.status != "in_progress" or self._expired(a):
+            raise Conflict("考试已结束")
+        item = next(
+            (it for s in a.sections if s["type"] == "roleplay" for it in s["items"] if it["key"] == key), None
+        )
+        if item is None:
+            raise NotFound("对练题不存在")
+        if item.get("session_id"):
+            return {"session_id": item["session_id"]}
+        mode = "exam" if a.kind == "exam" else "practice"
+        session = await self.practice.start(user, item["scenario_id"], mode=mode, exam_attempt_id=aid)
+        async with self.sf() as db, db.begin():
+            a = await self._owned(db, aid, user, lock=True)
+            sections = [
+                {
+                    **s,
+                    "items": [
+                        {**it, "session_id": session["id"]} if it["key"] == key else it for it in s["items"]
+                    ],
+                }
+                for s in a.sections
+            ]
+            a.sections = sections
+        return {"session_id": session["id"]}
+
+    async def _roleplay_scores(self, db: AsyncSession, a: ExamAttempt) -> dict[str, PracticeSession | None]:
+        out = {}
+        for s in a.sections:
+            if s["type"] != "roleplay":
+                continue
+            for it in s["items"]:
+                sid = it.get("session_id")
+                out[it["key"]] = await db.get(PracticeSession, uuid.UUID(sid)) if sid else None
+        return out
+
+    async def submit(self, aid: uuid.UUID, user: User) -> dict:
+        async with self.sf() as db:
+            a = await self._owned(db, aid, user)
+            if a.status != "in_progress":
+                return await self.view(aid, user)
+            sessions = await self._roleplay_scores(db, a)
+        # 进行中的对练：已开口的自动结束并生成报告；未开口的计 0 分
+        for sess in sessions.values():
+            if sess is not None and sess.report is None and sess.turns > 0:
+                try:
+                    await self.practice.end(sess.id, user)
+                except Conflict as exc:
+                    raise Conflict("对练报告正在生成，请稍后再交卷") from exc
+        async with self.sf() as db, db.begin():
+            a = await self._owned(db, aid, user, lock=True)
+            if a.status != "in_progress":
+                return await self.view(aid, user)
+            sessions = await self._roleplay_scores(db, a)
+            scores = {k: (s.total_score if s is not None and s.report else None) for k, s in sessions.items()}
+            result = exam_rules.grade(a.sections, a.answers or {}, scores)
+            paper = self.registry.papers.get(a.paper_id)
+            a.result = result
+            a.score = result["total"]
+            a.passed = result["total"] >= (paper.pass_score if paper else 60)
+            a.status = "submitted"
+            a.submitted_at = _now()
+        return await self.view(aid, user)
+
+    # ---------- 查询 ----------
+
+    async def view(self, aid: uuid.UUID, user: User) -> dict:
+        async with self.sf() as db:
+            a = await self._owned(db, aid, user)
+            expired = a.status == "in_progress" and self._expired(a, GRACE_SECONDS)
+        if expired:
+            # 超时自动交卷（按已保存答案判分）
+            return await self.submit(aid, user)
+        async with self.sf() as db:
+            a = await self._owned(db, aid, user)
+            sessions = await self._roleplay_scores(db, a)
+        return attempt_view(a, self.registry.papers.get(a.paper_id), sessions)
+
+    async def list_papers(self, user: User) -> list[dict]:
+        papers = self.registry.enabled()
+        async with self.sf() as db:
+            rows = (
+                await db.execute(
+                    select(
+                        ExamAttempt.paper_id,
+                        func.count(),
+                        func.max(ExamAttempt.score),
+                        func.bool_or(ExamAttempt.passed),
+                    )
+                    .where(ExamAttempt.user_id == user.id)
+                    .group_by(ExamAttempt.paper_id)
+                )
+            ).all()
+            ongoing = dict(
+                (
+                    await db.execute(
+                        select(ExamAttempt.paper_id, ExamAttempt.id).where(
+                            ExamAttempt.user_id == user.id, ExamAttempt.status == "in_progress"
+                        )
+                    )
+                ).all()
+            )
+        stats = {r[0]: r for r in rows}
+        dept = user.department or ""
+        papers.sort(key=lambda p: (p.kind != "exam", bool(p.department) and dept not in p.department))
+        return [
+            {
+                **paper_card(p),
+                "attempts": stats[p.id][1] if p.id in stats else 0,
+                "best_score": stats[p.id][2] if p.id in stats else None,
+                "passed": bool(stats[p.id][3]) if p.id in stats else False,
+                "ongoing_attempt_id": str(ongoing[p.id]) if p.id in ongoing else None,
+            }
+            for p in papers
+        ]
+
+    async def my_attempts(self, user: User, limit: int = 30) -> list[dict]:
+        async with self.sf() as db:
+            rows = (
+                (
+                    await db.execute(
+                        select(ExamAttempt)
+                        .where(ExamAttempt.user_id == user.id)
+                        .order_by(ExamAttempt.started_at.desc())
+                        .limit(limit)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        return [attempt_summary(a) for a in rows]
+
+    # ---------- 管理员 ----------
+
+    async def admin_list(self, paper_id: str | None, user_id: int | None, page: int, size: int) -> dict:
+        cond = []
+        if paper_id:
+            cond.append(ExamAttempt.paper_id == paper_id)
+        if user_id:
+            cond.append(ExamAttempt.user_id == user_id)
+        size = max(1, min(size, 100))
+        async with self.sf() as db:
+            total = (
+                await db.execute(select(func.count()).select_from(ExamAttempt).where(*cond))
+            ).scalar_one()
+            rows = (
+                await db.execute(
+                    select(ExamAttempt, User)
+                    .join(User, User.id == ExamAttempt.user_id)
+                    .where(*cond)
+                    .order_by(ExamAttempt.started_at.desc())
+                    .offset((max(page, 1) - 1) * size)
+                    .limit(size)
+                )
+            ).all()
+        return {
+            "total": total,
+            "items": [
+                {
+                    **attempt_summary(a),
+                    "user": {"id": u.id, "userid": u.userid, "name": u.name, "department": u.department},
+                }
+                for a, u in rows
+            ],
+        }
+
+    async def admin_detail(self, aid: uuid.UUID) -> dict:
+        async with self.sf() as db:
+            a = await db.get(ExamAttempt, aid)
+            if a is None:
+                raise NotFound("作答记录不存在")
+            u = await db.get(User, a.user_id)
+            sessions = await self._roleplay_scores(db, a)
+        view = attempt_view(a, self.registry.papers.get(a.paper_id), sessions, reveal=True)
+        return {**view, "user": {"id": u.id, "userid": u.userid, "name": u.name, "department": u.department}}
+
+
+def paper_card(p: Paper) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "kind": p.kind,
+        "description": p.description,
+        "pass_score": p.pass_score,
+        "time_limit_minutes": p.time_limit_minutes,
+        "max_attempts": p.max_attempts,
+        "sections": [{"type": s.type, "title": s.title, "weight": s.weight} for s in p.sections],
+    }
+
+
+def attempt_summary(a: ExamAttempt) -> dict:
+    return {
+        "id": str(a.id),
+        "paper_id": a.paper_id,
+        "paper_name": a.paper_name,
+        "kind": a.kind,
+        "status": a.status,
+        "score": a.score,
+        "passed": a.passed,
+        "started_at": a.started_at.isoformat() if a.started_at else None,
+        "deadline_at": a.deadline_at.isoformat() if a.deadline_at else None,
+        "submitted_at": a.submitted_at.isoformat() if a.submitted_at else None,
+    }
+
+
+def attempt_view(
+    a: ExamAttempt, paper: Paper | None, sessions: dict[str, PracticeSession | None], reveal: bool = False
+) -> dict:
+    submitted = a.status == "submitted"
+    reveal = reveal or (submitted and (a.kind == "self_test" or (paper.show_answers if paper else False)))
+    graded = {it["key"]: it for s in (a.result or {}).get("sections", []) for it in s["items"]}
+    sections = []
+    for s in a.sections:
+        items = []
+        for it in s["items"]:
+            if s["type"] == "roleplay":
+                sess = sessions.get(it["key"])
+                items.append(
+                    {
+                        "key": it["key"],
+                        "scenario_id": it["scenario_id"],
+                        "scenario_name": it["scenario_name"],
+                        "session_id": it.get("session_id"),
+                        "session_status": sess.status if sess else None,
+                        "report_ready": bool(sess and sess.report),
+                        "score": sess.total_score if sess and sess.report else None,
+                    }
+                )
+                continue
+            view = {k: it[k] for k in ("key", "type", "stem", "options")}
+            if "recording" in it:
+                view["recording"] = it["recording"]
+            view["chosen"] = (a.answers or {}).get(it["key"], [])
+            if reveal:
+                g = graded.get(it["key"], {})
+                view.update(
+                    answer=it["answer"], explanation=it.get("explanation", ""), credit=g.get("credit")
+                )
+            items.append(view)
+        sections.append({"type": s["type"], "title": s["title"], "weight": s["weight"], "items": items})
+    result = None
+    if a.result:
+        result = {
+            "total": a.result["total"],
+            "sections": [
+                {k: s[k] for k in ("title", "type", "weight", "score")} for s in a.result["sections"]
+            ],
+        }
+    return {
+        **attempt_summary(a),
+        "pass_score": paper.pass_score if paper else None,
+        "time_limit_minutes": paper.time_limit_minutes if paper else None,
+        "server_time": _now().isoformat(),
+        "revealed": reveal,
+        "result": result,
+        "sections": sections,
+    }

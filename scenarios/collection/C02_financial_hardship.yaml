@@ -1,0 +1,54 @@
+# 场景内容均为虚构示例（已脱敏）
+id: C02
+name: 资金困难、请求延期的客户
+department: [催收, 贷后]
+difficulty: 3
+max_turns: 14
+estimated_minutes: 6
+tags: [共情, 还款能力, 分次方案, 不越权承诺]
+summary: 客户逾期 25 天，自称生意亏损、手头紧，希望“缓几个月再说”。
+
+background: |
+  客户王女士办理车辆分期，逾期 25 天，欠一期月供及少量违约金。
+  她经营的小餐馆近期生意不好，资金周转困难。她态度不差，但反复强调“真没钱”，希望停催几个月。
+  公司政策：坐席无权减免本金和罚息，也不能承诺停止催收；可以协助客户先还部分款项，剩余款项约定明确日期。
+goal: 了解真实困难与收入情况，合规告知逾期影响，在政策范围内协商一个具体的还款计划（先还多少、何时还清）。
+
+persona:
+  name: 王女士
+  role: 车贷客户，小餐馆老板
+  personality: 焦虑、爱诉苦，但本质上想还；最怕被逼急，被理解后愿意想办法
+  speaking_style: 话多，喜欢讲生意难，常说“我也不想的”“你让我拿什么还”
+  background: 餐馆营业额下滑，下月初会有一笔货款回款，大约能凑出一部分钱
+  hidden_needs:
+    - 被理解，而不是被当作故意不还
+    - 希望能先还一部分，缓解征信和催收压力
+    - 想知道车会不会被收回
+  objections:
+    - id: no_money
+      text: 坚称现在一分钱都没有
+      key: true
+      resolve_hints: [理解, 困难, 收入, 回款, 部分, 先还]
+    - id: stop_collection
+      text: 要求停催几个月或减免罚息
+      key: true
+      resolve_hints: [政策, 无权, 申请, 如实, 帮您反映]
+    - id: car_risk
+      text: 担心车被收回
+      key: false
+      resolve_hints: [合同, 按约, 尽快, 处理, 风险]
+
+opening:
+  speaker: customer
+  line: 又是你们啊……我知道欠钱了，可我现在真没钱，你们能不能缓几个月再打？
+  tip: 先共情再了解原因；不要承诺减免或停催，引导客户给出“先还多少、哪天还”的具体计划。
+
+state_rules:
+  initial_trust: 25
+  deal_threshold: 72
+  hangup_threshold: 5
+  min_turns_to_deal: 5
+
+deal_line: 那这样，我下月 5 号货款到了先还一千五，剩下的 20 号前补齐，你记一下。
+hangup_line: 你们就知道逼我，我真没办法，挂了。
+scoring: collection_default

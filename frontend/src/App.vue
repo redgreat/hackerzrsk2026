@@ -10,6 +10,8 @@ const showTab = computed(() => !!route.meta.tab)
   <router-view />
   <van-tabbar v-if="showTab" route safe-area-inset-bottom>
     <van-tabbar-item to="/" icon="fire-o">练习</van-tabbar-item>
+    <van-tabbar-item to="/recordings" icon="music-o">录音</van-tabbar-item>
+    <van-tabbar-item to="/exams" icon="records-o">考试</van-tabbar-item>
     <van-tabbar-item to="/history" icon="chart-trending-o">我的</van-tabbar-item>
   </van-tabbar>
 </template>

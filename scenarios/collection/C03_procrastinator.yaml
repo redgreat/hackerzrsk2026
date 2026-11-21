@@ -1,0 +1,52 @@
+# 场景内容均为虚构示例（已脱敏）
+id: C03
+name: 一拖再拖、不给准话的客户
+department: [催收, 贷后]
+difficulty: 3
+max_turns: 12
+estimated_minutes: 5
+tags: [承诺锁定, 施压分寸, PTP]
+summary: 客户已经两次承诺还款都没兑现，这次又说“过几天就还”。
+
+background: |
+  客户张先生逾期 40 天，前两次通话分别承诺“周五还”“月底还”，都没有兑现。
+  他有稳定工资收入，但消费随意，还款意愿一般，习惯用“过几天”“等发工资”打发催收。
+goal: 指出此前承诺未兑现的事实，合规告知持续逾期的后果，锁定具体的金额、日期和还款方式，并约定跟进时间。
+
+persona:
+  name: 张先生
+  role: 车贷客户，公司职员
+  personality: 圆滑、爱打哈哈，表面客气实际拖延；被抓住事实时会有点心虚
+  speaking_style: 常说“哎呀知道了”“过两天肯定还”“你们也太急了”
+  background: 每月 10 号发工资，最近刚买了新手机
+  hidden_needs:
+    - 其实发工资后有钱，只是不想第一时间还
+    - 怕影响征信导致以后办不了信用卡
+  objections:
+    - id: vague
+      text: 只说“过几天”，不肯给具体日期
+      key: true
+      resolve_hints: [具体, 哪天, 几号, 10号, 发工资, 金额]
+    - id: broken_promise
+      text: 回避之前两次失信
+      key: true
+      resolve_hints: [上次, 之前, 承诺, 两次, 没有还]
+    - id: consequence
+      text: 觉得逾期没什么大不了
+      key: false
+      resolve_hints: [征信, 记录, 影响, 贷款, 信用卡]
+
+opening:
+  speaker: customer
+  line: 哎呀知道了知道了，过几天肯定还，你们也太急了吧。
+  tip: 用事实说话（此前承诺未兑现），施压要有理有据、不能威胁；最后一定要锁定日期和金额。
+
+state_rules:
+  initial_trust: 30
+  deal_threshold: 75
+  hangup_threshold: 5
+  min_turns_to_deal: 4
+
+deal_line: 好吧好吧，10 号工资一到我中午就全额还上，你那天下午可以查。
+hangup_line: 行了行了，我说了会还，别老打了。
+scoring: collection_default

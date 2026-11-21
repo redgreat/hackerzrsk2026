@@ -176,12 +176,25 @@ class PracticeService:
 
     # ---------- 业务接口 ----------
 
-    async def start(self, user: User, scenario_id: str) -> dict:
+    async def start(
+        self,
+        user: User,
+        scenario_id: str,
+        mode: str = "practice",
+        exam_attempt_id: uuid.UUID | None = None,
+    ) -> dict:
         scenario = self.ctx.scenarios.get(scenario_id)
         sid = uuid.uuid4()
         async with self.sf() as db, db.begin():
             db.add(
-                PracticeSession(id=sid, user_id=user.id, scenario_id=scenario.id, scenario_name=scenario.name)
+                PracticeSession(
+                    id=sid,
+                    user_id=user.id,
+                    scenario_id=scenario.id,
+                    scenario_name=scenario.name,
+                    mode=mode,
+                    exam_attempt_id=exam_attempt_id,
+                )
             )
         await self._run_collect(
             sid, user, {"session_id": str(sid), "user_id": user.userid, "scenario_id": scenario.id}
@@ -217,7 +230,8 @@ class PracticeService:
 
     async def hint(self, sid: uuid.UUID, user: User) -> str:
         async with self.sf() as db:
-            await self._owned(db, sid, user)
+            if (await self._owned(db, sid, user)).mode == "exam":
+                raise Forbidden("考试中不能使用求助提示")
         lock = await self._acquire(sid)
         if await self._next_nodes(sid) != ("wait_input",):
             lock.release()
@@ -337,6 +351,8 @@ def session_summary(s: PracticeSession) -> dict:
         "id": str(s.id),
         "scenario_id": s.scenario_id,
         "scenario_name": s.scenario_name,
+        "mode": s.mode or "practice",
+        "exam_attempt_id": str(s.exam_attempt_id) if s.exam_attempt_id else None,
         "status": s.status,
         "turns": s.turns,
         "hints_used": s.hints_used,

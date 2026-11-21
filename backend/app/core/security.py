@@ -1,3 +1,7 @@
+import base64
+import hashlib
+import hmac
+import secrets
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -25,3 +29,34 @@ def decode_token(settings: Settings, token: str) -> int:
     except jwt.PyJWTError as exc:
         raise Unauthorized("登录已失效，请重新进入") from exc
     return int(payload["sub"])
+
+
+# ---------- 密码（标准库 scrypt，无额外依赖） ----------
+
+_SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 2**14, 8, 1
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode(), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32)
+    b64 = base64.urlsafe_b64encode
+    return f"scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}${b64(salt).decode()}${b64(digest).decode()}"
+
+
+def verify_password(password: str, stored: str | None) -> bool:
+    try:
+        algo, n, r, p, salt, digest = (stored or "").split("$")
+        if algo != "scrypt":
+            return False
+        expected = base64.urlsafe_b64decode(digest)
+        actual = hashlib.scrypt(
+            password.encode(),
+            salt=base64.urlsafe_b64decode(salt),
+            n=int(n),
+            r=int(r),
+            p=int(p),
+            dklen=len(expected),
+        )
+    except ValueError:
+        return False
+    return hmac.compare_digest(actual, expected)

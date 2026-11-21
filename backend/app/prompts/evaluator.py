@@ -22,14 +22,29 @@ EVALUATOR_SYSTEM = """你是话术陪练系统中的“客户心理评估器”�
 - 急于报价/压单、贬低竞品：-10
 - 不礼貌、违规承诺（如“保证”“绝对”“随便赔”）：-20，情节严重时 hangup=true
 
-## 判断原则
+{red_lines}## 判断原则
 - 当前信任值：{trust}/100。要严格，客户不会因为一句好话就被说服；顾虑只有被具体、可信地回应才算化解。
 - inner_thought 用客户第一人称写本轮真实内心独白，不超过 40 字，要有个性。
 - behaviors 用 2~6 字短语标注员工本轮的关键行为（1~3 个）。"""
 
 
+RED_LINES_SECTION = """## 合规红线（员工本轮触犯任一条：trust_delta 不高于 -20，red_line 照抄该红线原文；情节严重时 hangup=true）
+{items}
+
+"""
+
+
+def red_lines_text(red_lines: list[str]) -> str:
+    return RED_LINES_SECTION.format(items="\n".join(f"- {r}" for r in red_lines)) if red_lines else ""
+
+
 def evaluator_messages_text(
-    scenario: Scenario, trust: int, open_ids: list[str], transcript: list[dict], said: str
+    scenario: Scenario,
+    trust: int,
+    open_ids: list[str],
+    transcript: list[dict],
+    said: str,
+    red_lines: list[str] | None = None,
 ) -> tuple[str, str]:
     p = scenario.persona
     system = EVALUATOR_SYSTEM.format(
@@ -41,6 +56,7 @@ def evaluator_messages_text(
         open_objections=objections_text(scenario, open_ids, with_hints=True),
         hidden_needs="\n".join(f"- {n}" for n in p.hidden_needs) or "（无）",
         trust=trust,
+        red_lines=red_lines_text(red_lines or []),
     )
     user = f"## 此前对话\n{transcript_text(transcript, p.name)}\n\n## 员工本轮发言：{said}"
     return system, user

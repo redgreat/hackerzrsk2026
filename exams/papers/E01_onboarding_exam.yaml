@@ -1,0 +1,25 @@
+# 催收新人上岗考试（正式考试：限时、限次、对练禁用提示）
+id: E01
+name: 催收新人上岗考试
+kind: exam
+description: 合规知识 + 听录音答题 + 两场 AI 情景对练，80 分及格。考试中对练不能使用求助提示。
+department: [催收, 贷后]
+pass_score: 80
+time_limit_minutes: 60
+max_attempts: 3
+show_answers: true
+sections:
+  - type: quiz
+    title: 合规与话术知识
+    weight: 40
+    tags: [合规, 话术]
+    count: 12
+  - type: listening
+    title: 听录音答题
+    weight: 20
+    count: 3
+  - type: roleplay
+    title: 情景对练
+    weight: 40
+    scenario_ids: [C02, C03, C04, C06]
+    count: 2

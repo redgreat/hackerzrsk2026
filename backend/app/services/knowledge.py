@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
-from sqlalchemy import func, literal, or_, select, true
+from sqlalchemy import delete, func, literal, or_, select, true
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -125,7 +125,15 @@ class KnowledgeBase:
         return vectors
 
     async def ingest_dir(self, root: Path) -> int:
-        chunks = await asyncio.to_thread(parse_dir, root)
+        return await self.ingest_chunks(await asyncio.to_thread(parse_dir, root))
+
+    async def replace_source(self, source: str, chunks: list[ParsedChunk]) -> int:
+        """按来源整体替换（如某条已发布录音的亮点话术）；chunks 为空即删除。"""
+        async with self.session_factory() as db, db.begin():
+            await db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.source == source))
+        return await self.ingest_chunks(chunks)
+
+    async def ingest_chunks(self, chunks: list[ParsedChunk]) -> int:
         if not chunks:
             return 0
         vectors = (

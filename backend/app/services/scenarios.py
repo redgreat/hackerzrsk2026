@@ -95,6 +95,9 @@ class Rubric(BaseModel):
     dimensions: list[Dimension]
     hint_penalty: float = 2
     hint_penalty_max: float = 10
+    # 合规红线：任一条被触犯，总分封顶 red_line_cap（如催收中的威胁恐吓、向第三方透露欠款）
+    red_lines: list[str] = Field(default_factory=list)
+    red_line_cap: int = Field(59, ge=0, le=100)
 
     @property
     def total_weight(self) -> float:
@@ -118,7 +121,11 @@ class ScenarioRegistry:
             r = Rubric.model_validate(yaml.safe_load(f.read_text(encoding="utf-8")))
             rubrics[r.id] = r
         scenarios = {}
-        for f in sorted(root.glob("*.y*ml")):
+        # 顶层文件在前，业务线子目录（如 collection/）在后；rubrics/ 为评分表
+        files = sorted(root.glob("*.y*ml")) + sorted(
+            f for f in root.glob("*/*.y*ml") if f.parent.name != "rubrics"
+        )
+        for f in files:
             s = Scenario.model_validate(yaml.safe_load(f.read_text(encoding="utf-8")))
             if s.id in scenarios:
                 raise ValueError(f"场景 id 重复：{s.id}")

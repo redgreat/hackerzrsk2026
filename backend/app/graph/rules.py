@@ -50,8 +50,23 @@ def normalize_dimensions(rubric: Rubric, out: CoachOutput) -> list[DimensionScor
     ]
 
 
-def total_score(rubric: Rubric, dims: list[DimensionScore], hints_used: int) -> int:
+def total_score(
+    rubric: Rubric, dims: list[DimensionScore], hints_used: int, red_line_hit: bool = False
+) -> int:
     weights = {d.name: d.weight for d in rubric.dimensions}
     raw = sum(d.score / 5 * weights[d.name] for d in dims) / rubric.total_weight * 100
     penalty = min(rubric.hint_penalty * hints_used, rubric.hint_penalty_max)
-    return max(0, min(100, round(raw - penalty)))
+    score = max(0, min(100, round(raw - penalty)))
+    return min(score, rubric.red_line_cap) if red_line_hit else score
+
+
+def red_line_violations(inner_thoughts: list[dict], coach_reported: list[str]) -> list[dict]:
+    """合并逐轮评估命中的红线与教练复核发现的红线（去重，逐轮记录优先）。"""
+    items = [{"turn": t["turn"], "red_line": t["red_line"]} for t in inner_thoughts if t.get("red_line")]
+    seen = {f"第{i['turn']}轮：{i['red_line']}" for i in items} | {i["red_line"] for i in items}
+    for text in coach_reported:
+        text = text.strip()
+        if text and text not in seen and not any(i["red_line"] in text for i in items):
+            items.append({"turn": None, "red_line": text})
+            seen.add(text)
+    return items

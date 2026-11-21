@@ -15,6 +15,7 @@ const sid = route.params.id as string
 
 const report = ref<Report | null>(null)
 const messages = ref<Message[]>([])
+const examAttemptId = ref<string | null>(null)
 const waiting = ref(false)
 const showTranscript = ref(false)
 let timer: number | undefined
@@ -27,7 +28,9 @@ async function load() {
   try {
     report.value = await api.report(sid)
     waiting.value = false
-    messages.value = (await api.session(sid)).messages
+    const s = await api.session(sid)
+    messages.value = s.messages
+    examAttemptId.value = s.exam_attempt_id
   } catch (e) {
     if (e instanceof ApiError && e.status === 404 && tries++ < 30) {
       waiting.value = true
@@ -71,6 +74,16 @@ async function again() {
           <span class="muted">{{ report.scenario_name }} · {{ report.turns }} 轮 · 求助 {{ report.hints_used }} 次</span>
         </div>
         <p class="summary">{{ report.summary }}</p>
+        <van-button v-if="examAttemptId" size="small" plain round style="margin-top: 8px" @click="router.push(`/attempt/${examAttemptId}`)">
+          返回考卷
+        </van-button>
+      </div>
+
+      <div v-if="report.red_lines?.length" class="card redlines">
+        <h3><van-icon name="warning-o" color="#f53f3f" /> 触发合规红线（总分已封顶）</h3>
+        <div v-for="(r, i) in report.red_lines" :key="i" class="point">
+          <van-tag type="danger">{{ r.turn ? `第${r.turn}轮` : '整体' }}</van-tag> {{ r.red_line }}
+        </div>
       </div>
 
       <div class="card">
@@ -145,6 +158,9 @@ async function again() {
 </template>
 
 <style scoped>
+.redlines {
+  border: 1px solid #f53f3f;
+}
 .wait {
   margin-top: 30vh;
 }

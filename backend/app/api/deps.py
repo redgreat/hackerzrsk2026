@@ -7,6 +7,7 @@ from app.core.container import Container
 from app.core.errors import Forbidden, Unauthorized
 from app.core.security import decode_token
 from app.db.models import User
+from app.services.users import STATUS_MESSAGES
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -28,6 +29,8 @@ async def current_user(
         user = await db.get(User, user_id)
     if user is None:
         raise Unauthorized("用户不存在")
+    if user.status != "active":
+        raise Unauthorized(STATUS_MESSAGES.get(user.status, "账号不可用"))
     return user
 
 
@@ -35,6 +38,8 @@ UserDep = Annotated[User, Depends(current_user)]
 
 
 def is_admin(settings, user: User) -> bool:
+    if user.role == "admin":
+        return True
     # 生产环境必须显式配置管理员工号；开发/测试环境未配置时放开，便于本地调试
     if not settings.admin_userids:
         return settings.app_env != "prod"

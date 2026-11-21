@@ -39,7 +39,10 @@ function push(role: Message['role'], content: string) {
 onMounted(async () => {
   try {
     const [s, sc] = await Promise.all([api.session(sid), api.speechConfig()])
-    if (s.status !== 'ongoing') return router.replace(`/report/${sid}`)
+    if (s.status !== 'ongoing') {
+      if (s.mode === 'exam' && s.exam_attempt_id) return router.replace(`/attempt/${s.exam_attempt_id}`)
+      return router.replace(`/report/${sid}`)
+    }
     session.value = s
     messages.value = s.messages
     asrEnabled.value = sc.asr_enabled && recorder.supported
@@ -155,7 +158,7 @@ async function endPractice() {
     <van-nav-bar
       :title="session?.persona ? `${session.persona.name} · ${session.persona.role}` : '对练中'"
       left-arrow
-      @click-left="router.push('/')"
+      @click-left="session?.exam_attempt_id ? router.push(`/attempt/${session.exam_attempt_id}`) : router.push('/')"
     >
       <template #right>
         <van-icon :name="speaker.enabled.value ? 'volume-o' : 'volume'" size="20" @click="speaker.toggle" />
@@ -187,9 +190,9 @@ async function endPractice() {
 
     <div class="toolbar">
       <div class="actions">
-        <span class="muted">第 {{ turn }} 轮</span>
+        <span class="muted">第 {{ turn }} 轮<van-tag v-if="session?.mode === 'exam'" type="danger" style="margin-left: 6px">考试</van-tag></span>
         <div>
-          <van-button size="small" round icon="bulb-o" :disabled="busy" @click="askHint">求助</van-button>
+          <van-button v-if="session?.mode !== 'exam'" size="small" round icon="bulb-o" :disabled="busy" @click="askHint">求助</van-button>
           <van-button size="small" round type="danger" plain :disabled="busy" @click="endPractice">结束</van-button>
         </div>
       </div>

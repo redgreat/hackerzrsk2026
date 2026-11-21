@@ -27,7 +27,11 @@ COACH_SYSTEM = """你是一位资深的{rubric_name}教练，按公司销冠标�
 4. turn_reviews 选 2~4 个最值得改进的轮次：user_said 摘录员工原话，issue 指出问题，
    better_reply 给出可直接说出口的口语化推荐话术（不超过 80 字）。
 5. 如果员工在某维度没有相关表现，按 1~2 分处理并说明原因。
-6. dimension_scores 必须覆盖全部维度，name 与上面的维度名称完全一致。"""
+6. dimension_scores 必须覆盖全部维度，name 与上面的维度名称完全一致。{red_lines}"""
+
+RED_LINES_RULE = """
+7. 合规红线（触犯任一条必须写入 red_line_violations，格式“第N轮：红线原文”，相关合规维度打 1 分；未触犯则为空数组）：
+{items}"""
 
 
 def coach_messages_text(
@@ -41,6 +45,9 @@ def coach_messages_text(
         dimensions=dims,
         references=snippets_text(references),
         profile=profile,
+        red_lines=RED_LINES_RULE.format(items="\n".join(f"   - {r}" for r in rubric.red_lines))
+        if rubric.red_lines
+        else "",
     )
     thoughts = (
         "\n".join(
