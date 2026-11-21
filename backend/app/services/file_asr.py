@@ -71,8 +71,11 @@ class FileASR:
         return self.cfg.asr_provider != "none"
 
     def _client(self) -> httpx.AsyncClient:
+        base = self.cfg.dashscope_base_url.rstrip("/")
+        if base.endswith("/api/v1"):  # 兼容直接粘贴百炼工作台的 dashScope 地址
+            base = base[: -len("/api/v1")]
         return httpx.AsyncClient(
-            base_url=self.cfg.dashscope_base_url.rstrip("/"),
+            base_url=base,
             headers={"Authorization": f"Bearer {self.cfg.dashscope_api_key}"},
             timeout=60,
             transport=self._transport,

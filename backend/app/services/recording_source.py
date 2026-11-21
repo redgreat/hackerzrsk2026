@@ -12,8 +12,11 @@ from app.services.dbmcp import DbMcpClient
 
 # recall_record 分库分表：主库 sw_dhtcenter 中 recall_record_0 .. recall_record_9
 # （从库 sw_dhtcenter_slave 另有镜像 10 张，合称 20 张表；查询只查主库）
+# source=3 的 callCenterPath 是华为云 OBS 地址（403 不可读），改用 c.url 里的
+# amp-prod 相对路径，经 audio_base_url 拼成阿里云 OSS 地址
 URL_EXPR = """CASE
-           WHEN c.source IN (0, 3, 4) THEN c.callCenterPath
+           WHEN c.source IN (0, 4) THEN c.callCenterPath
+           WHEN c.source = 3 THEN c.url
            WHEN c.source = 6 AND c.callCenterPath IS NOT NULL THEN c.callCenterPath
            ELSE c.url
        END"""
