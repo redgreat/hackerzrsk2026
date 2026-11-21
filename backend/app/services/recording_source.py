@@ -10,7 +10,8 @@ from pathlib import Path
 from app.core.config import RecordingSettings
 from app.services.dbmcp import DbMcpClient
 
-# recall_record_x 分 20 张表：recall_record_x_0 .. recall_record_x_19
+# recall_record 分库分表：主库 sw_dhtcenter 中 recall_record_0 .. recall_record_9
+# （从库 sw_dhtcenter_slave 另有镜像 10 张，合称 20 张表；查询只查主库）
 URL_EXPR = """CASE
            WHEN c.source IN (0, 3, 4) THEN c.callCenterPath
            WHEN c.source = 6 AND c.callCenterPath IS NOT NULL THEN c.callCenterPath
@@ -29,7 +30,7 @@ class RecordingItem:
 
 def excellent_calls_sql(shard_count: int, limit: int | None = None) -> str:
     shards = "\n    UNION ALL\n    ".join(
-        f"SELECT b.callId FROM recall_excellent_call a JOIN recall_record_x_{i} b ON a.recordId = b.id"
+        f"SELECT b.callId FROM recall_excellent_call a JOIN recall_record_{i} b ON a.recordId = b.id AND a.deleted = 0"
         for i in range(shard_count)
     )
     sql = f"""SELECT c.id AS call_id, {URL_EXPR} AS url

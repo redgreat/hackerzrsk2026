@@ -21,7 +21,7 @@
 来源：dbmcp 连接 ID=51（瑟维斯贷后，MySQL）。
 
 ```sql
--- 优秀录音 → 催收记录（分 20 张表 recall_record_x_0..19）→ 通话记录 → 录音地址
+-- 优秀录音 → 催收记录（主库 recall_record_0..9 共 10 张分表；从库 sw_dhtcenter_slave 另有镜像 10 张）→ 通话记录 → 录音地址
 select CASE WHEN c.source in (0,3,4) THEN c.callCenterPath
             WHEN c.source = 6 AND c.callCenterPath IS NOT NULL THEN c.callCenterPath
             ELSE c.url END AS url

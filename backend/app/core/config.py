@@ -117,7 +117,8 @@ class RecordingSettings(BaseModel):
     dbmcp_url: str = "https://mcp.lunz.cn/mcp/sse"
     dbmcp_key: str | None = None
     connection_id: int = 51
-    shard_count: int = 20
+    # 主库中的分表数量（sw_dhtcenter.recall_record_0..9；从库另有镜像不计）
+    shard_count: int = 10
     # 录音地址为相对路径时拼接的前缀（如呼叫中心录音服务器地址）
     audio_base_url: str | None = None
     # AI 分析优质录音时使用的评分表

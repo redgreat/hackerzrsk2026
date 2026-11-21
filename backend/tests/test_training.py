@@ -280,8 +280,9 @@ def test_parse_rows_formats():
 
 
 def test_excellent_calls_sql_covers_all_shards():
-    sql = excellent_calls_sql(20, limit=50)
-    assert sql.count("JOIN recall_record_x_") == 20 and "recall_record_x_19" in sql
+    sql = excellent_calls_sql(10, limit=50)
+    assert sql.count("JOIN recall_record_") == 10 and "recall_record_9" in sql
+    assert sql.count("a.deleted = 0") == 10
     assert sql.rstrip().endswith("LIMIT 50") and "callCenterPath" in sql
     assert normalize_url("rec/1.mp3", "https://cc.example.com/") == "https://cc.example.com/rec/1.mp3"
     assert normalize_url("https://oss/1.mp3", "https://cc") == "https://oss/1.mp3"
