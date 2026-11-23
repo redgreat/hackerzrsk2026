@@ -8,7 +8,6 @@ import type {
   ChoiceQuestion,
   PaperCard,
   RecordingDetail,
-  RecordingPage,
   AdminScenario,
   AdminSession,
   AdminSessionDetail,
@@ -66,12 +65,6 @@ export const api = {
 
   myStats: () => get<MyStats>('/stats/me'),
 
-  recordings: (q: Query) => get<RecordingPage>(`/recordings?${qs(q)}`),
-  recording: (id: number | string) => get<RecordingDetail>(`/recordings/${id}`),
-  recordingPlayed: (id: number) => post<{ ok: boolean }>(`/recordings/${id}/played`),
-  checkQuestion: (rid: number, qid: number, answer: number[]) =>
-    post<{ correct: boolean; answer: number[]; explanation: string }>(`/recordings/${rid}/questions/${qid}/check`, { answer }),
-
   papers: () => get<PaperCard[]>('/exams'),
   myAttempts: () => get<AttemptSummary[]>('/exams/attempts'),
   startExam: (paperId: string) => post<AttemptDetail>(`/exams/${paperId}/start`),
@@ -114,7 +107,8 @@ export const api = {
       body: Partial<Pick<ChoiceQuestion, 'stem' | 'options' | 'answer' | 'explanation' | 'status'>>,
     ) => patch<ChoiceQuestion>(`/admin/recording-questions/${id}`, body),
 
-    papers: () => get<(Omit<PaperCard, 'attempts' | 'best_score' | 'passed' | 'ongoing_attempt_id'> & { enabled: boolean })[]>('/admin/exams/papers'),
+    papers: () => get<(Omit<PaperCard, 'attempts' | 'best_score' | 'passed' | 'ongoing_attempt_id'> & { enabled: boolean; publication_id: number | null })[]>('/admin/exams/papers'),
+    publishPaper: (id: string) => post<{ id: number; paper_id: string }>(`/admin/exams/papers/${encodeURIComponent(id)}/publish`),
     attempts: (q: Query) => get<Paged<AdminAttempt>>(`/admin/exams/attempts?${qs(q)}`),
     attempt: (id: string) => get<AttemptDetail>(`/admin/exams/attempts/${id}`),
   },

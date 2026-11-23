@@ -47,7 +47,7 @@ def train_db(train_settings: Settings):
         conn.execute(
             text(
                 "TRUNCATE users, practice_sessions, practice_messages, model_usage, recordings, "
-                "recording_questions, exam_attempts, knowledge_chunks RESTART IDENTITY CASCADE"
+                "recording_questions, exam_attempts, exam_publications, knowledge_chunks RESTART IDENTITY CASCADE"
             )
         )
     engine.dispose()
@@ -229,7 +229,7 @@ async def test_self_test_quiz(client):
     admin = await _admin(client)
     user = await _register_and_approve(client, admin, "N200")
     papers = (await client.get("/api/exams", headers=user)).json()
-    assert papers[0]["kind"] == "exam"
+    assert "T02" not in {p["id"] for p in papers}
     a = (await client.post("/api/exams/T01/start", headers=user)).json()
     items = a["sections"][0]["items"]
     assert len(items) == 10 and "answer" not in items[0] and not a["revealed"]
@@ -257,17 +257,21 @@ async def test_self_test_quiz(client):
 async def test_formal_exam_with_roleplay(client):
     admin = await _admin(client)
     user = await _register_and_approve(client, admin, "N300")
+    assert (await client.post("/api/exams/E01/start", headers=user)).status_code == 404
+    assert (await client.post("/api/admin/exams/papers/E01/publish", headers=user)).status_code == 403
+    assert (await client.post("/api/admin/exams/papers/E01/publish", headers=admin)).status_code == 200
     a = (await client.post("/api/exams/E01/start", headers=user)).json()
     types = [s["type"] for s in a["sections"]]
-    # 听录音部分依赖已发布录音的已审核题目（上一条测试已准备 1 道）
-    assert types == ["quiz", "listening", "roleplay"]
-    assert a["deadline_at"] and a["sections"][1]["items"][0]["recording"]["audio_url"]
+    assert types == ["quiz", "roleplay"]
+    assert a["deadline_at"]
     quiz = a["sections"][0]["items"]
     await client.put(
         f"/api/exams/attempts/{a['id']}/answers", json={"answers": {quiz[0]["key"]: [0]}}, headers=user
     )
+    refreshed = (await client.get(f"/api/exams/attempts/{a['id']}", headers=user)).json()
+    assert refreshed["sections"][0]["items"][0]["chosen"] == [0]
 
-    rp = a["sections"][2]["items"]
+    rp = a["sections"][1]["items"]
     assert len(rp) == 2
     sid = (
         await client.post(f"/api/exams/attempts/{a['id']}/roleplay", json={"key": rp[0]["key"]}, headers=user)
@@ -287,11 +291,13 @@ async def test_formal_exam_with_roleplay(client):
     # 交卷：进行中的对练自动结束并出报告；第二场未开始计 0 分
     res = (await client.post(f"/api/exams/attempts/{a['id']}/submit", headers=user)).json()
     assert res["status"] == "submitted" and res["revealed"]
-    rp_items = res["sections"][2]["items"]
+    rp_items = res["sections"][1]["items"]
     assert rp_items[0]["report_ready"] and rp_items[0]["score"] is not None
     assert rp_items[1]["session_id"] is None
-    assert res["result"]["sections"][2]["score"] == round(rp_items[0]["score"] / 2, 1)
+    assert res["result"]["sections"][1]["score"] == round(rp_items[0]["score"] / 2, 1)
     assert res["passed"] is False
+    repeated = (await client.post(f"/api/exams/attempts/{a['id']}/submit", headers=user)).json()
+    assert repeated["submitted_at"] == res["submitted_at"] and repeated["result"] == res["result"]
 
     # 限次：E01 最多 3 次
     for _ in range(2):
@@ -327,3 +333,57 @@ async def test_exam_deadline_auto_submit(client, train_settings):
     assert r.status_code == 409
     v = (await client.get(f"/api/exams/attempts/{a['id']}", headers=user)).json()
     assert v["status"] == "submitted" and v["score"] == 0
+
+
+async def test_publication_pins_scenario_and_rubric_through_scoring_retry(client, monkeypatch):
+    from app.core.errors import UpstreamError
+
+    app = client._transport.app
+    container = app.state.container
+    admin = await _admin(client)
+    user = await _register_and_approve(client, admin, "N510")
+    other = await _register_and_approve(client, admin, "N511")
+    publish = "/api/admin/exams/papers/E01/publish"
+    assert (await client.post(publish, headers=admin)).status_code == 200
+    scenario = container.scenarios.get("C08")
+    old_rubric = container.scenarios.rubric_for(scenario)
+    monkeypatch.setitem(container.scenarios.scenarios, "C08", scenario.model_copy(update={"name": "新版本"}))
+    monkeypatch.setitem(
+        container.scenarios.rubrics, old_rubric.id, old_rubric.model_copy(update={"name": "新评分表"})
+    )
+    old = (await client.post("/api/exams/E01/start", headers=user)).json()
+    assert old["sections"][1]["items"][0]["scenario_name"] == scenario.name
+    assert "scenario_snapshot" not in old["sections"][1]["items"][0]
+
+    assert (await client.post(publish, headers=admin)).status_code == 200
+    new = (await client.post("/api/exams/E01/start", headers=other)).json()
+    assert new["sections"][1]["items"][0]["scenario_name"] == "新版本"
+    assert (await client.post("/api/exams/E01/start", headers=user)).json()["id"] == old["id"]
+
+    aid = old["id"]
+    roleplay = f"/api/exams/attempts/{aid}/roleplay"
+    opened = await asyncio.gather(
+        *[client.post(roleplay, json={"key": "s:C08"}, headers=user) for _ in range(2)]
+    )
+    assert opened[0].json() == opened[1].json()
+    sid = opened[0].json()["session_id"]
+    detail = (await client.get(f"/api/sessions/{sid}", headers=user)).json()
+    assert detail["scenario_name"] == scenario.name
+    await _send(client, user, sid, "您先别急，我想了解一下您目前遇到的困难。")
+
+    structured = container.llm.structured
+
+    async def fail_once(purpose, *args, **kwargs):
+        if purpose == "coach":
+            monkeypatch.setattr(container.llm, "structured", structured)
+            raise UpstreamError("模拟评分失败")
+        return await structured(purpose, *args, **kwargs)
+
+    monkeypatch.setattr(container.llm, "structured", fail_once)
+    submit = f"/api/exams/attempts/{aid}/submit"
+    failed = await client.post(submit, headers=user)
+    assert failed.status_code == 400 and failed.json()["message"] == "模拟评分失败"
+    assert (await client.get(f"/api/exams/attempts/{aid}", headers=user)).json()["status"] == "in_progress"
+    assert (await client.post(submit, headers=user)).json()["status"] == "submitted"
+    report = (await client.get(f"/api/sessions/{sid}/report", headers=user)).json()
+    assert report["rubric"] == old_rubric.name

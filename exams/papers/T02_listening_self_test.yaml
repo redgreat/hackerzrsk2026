@@ -2,6 +2,7 @@
 id: T02
 name: 听优秀录音答题
 kind: self_test
+enabled: false
 description: 先听一段优秀坐席的真实录音，再回答“这段话术好在哪”。
 department: [催收, 贷后]
 pass_score: 60

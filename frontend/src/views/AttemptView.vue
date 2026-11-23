@@ -2,7 +2,7 @@
 import { api } from '@/api'
 import type { AttemptDetail, QuizItem, RoleplayItem } from '@/types'
 import { scoreColor } from '@/utils/labels'
-import { showConfirmDialog, showFailToast, showToast } from 'vant'
+import { closeToast, showConfirmDialog, showFailToast, showLoadingToast } from 'vant'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -13,6 +13,10 @@ const aid = route.params.id as string
 const a = ref<AttemptDetail | null>(null)
 const remaining = ref('')
 const submitting = ref(false)
+const saving = ref(false)
+const deadlineChecked = ref(false)
+let loading = false
+let serverOffset = 0
 let timer: number | undefined
 
 const isQuiz = (sec: AttemptDetail['sections'][number]) => sec.type !== 'roleplay'
@@ -26,43 +30,56 @@ const quizTotal = computed(() => a.value?.sections.filter(isQuiz).reduce((n, s) 
 
 function tick() {
   if (!a.value?.deadline_at) return
-  const left = Math.max(0, new Date(a.value.deadline_at).getTime() - new Date(a.value.server_time).getTime())
-  const s = Math.floor(left / 1000)
+  const left = Math.max(0, new Date(a.value.deadline_at).getTime() - Date.now() - serverOffset)
+  const s = Math.ceil(left / 1000)
   remaining.value = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
 async function load() {
+  if (loading || submitting.value) return
+  loading = true
   try {
     a.value = await api.attempt(aid)
+    serverOffset = new Date(a.value.server_time).getTime() - Date.now()
+    tick()
   } catch (e) {
     showFailToast((e as Error).message)
+  } finally {
+    loading = false
   }
 }
 
 onMounted(async () => {
-  await load()
   timer = window.setInterval(async () => {
     if (a.value?.status === 'in_progress' && a.value.deadline_at) {
       tick()
-      if (remaining.value === '0:00') await load()
+      if (remaining.value === '0:00' && !deadlineChecked.value && !submitting.value && !saving.value) {
+        deadlineChecked.value = true
+        await load()
+      }
     }
   }, 1000)
+  await load()
 })
 onBeforeUnmount(() => window.clearInterval(timer))
 
 async function choose(it: QuizItem, idx: number) {
-  if (submitted.value) return
+  if (submitted.value || submitting.value || saving.value || remaining.value === '0:00') return
   const cur = it.chosen
+  saving.value = true
   it.chosen = it.type === 'multi' ? (cur.includes(idx) ? cur.filter((i) => i !== idx) : [...cur, idx]) : [idx]
   try {
     await api.saveAnswers(aid, { [it.key]: it.chosen })
   } catch (e) {
+    it.chosen = cur
     showFailToast((e as Error).message)
+  } finally {
+    saving.value = false
   }
 }
 
 async function startRoleplay(it: RoleplayItem) {
-  if (it.session_id) return router.push(`/practice/${it.session_id}`)
+  if (submitting.value || remaining.value === '0:00') return
   try {
     const r = await api.startRoleplay(aid, it.key)
     router.push(`/practice/${r.session_id}`)
@@ -72,7 +89,7 @@ async function startRoleplay(it: RoleplayItem) {
 }
 
 async function submit() {
-  if (submitting.value) return
+  if (submitting.value || saving.value) return
   try {
     await showConfirmDialog({
       title: '确认交卷',
@@ -83,12 +100,14 @@ async function submit() {
     return
   }
   submitting.value = true
-  showToast({ message: '正在判分…', duration: 0, forbidClick: true, type: 'loading' })
+  showLoadingToast({ message: '正在判分…', duration: 0, forbidClick: true })
   try {
     a.value = await api.submitExam(aid)
   } catch (e) {
+    closeToast()
     showFailToast((e as Error).message)
   } finally {
+    if (submitted.value) closeToast()
     submitting.value = false
   }
 }
@@ -161,10 +180,10 @@ async function submit() {
                   <template v-else>未开始</template>
                 </div>
               </div>
-              <van-button v-if="!submitted" size="small" type="primary" plain round @click="startRoleplay(it)">
+              <van-button v-if="!submitted && !it.report_ready" size="small" type="primary" plain round :disabled="submitting || remaining === '0:00'" @click="startRoleplay(it)">
                 {{ it.session_id ? '继续对练' : '开始对练' }}
               </van-button>
-              <van-button v-else-if="it.session_id" size="small" plain round @click="router.push(`/report/${it.session_id}`)">
+              <van-button v-else-if="submitted && it.report_ready && it.session_id" size="small" plain round @click="router.push(`/report/${it.session_id}`)">
                 看报告
               </van-button>
             </div>
@@ -174,7 +193,7 @@ async function submit() {
       </template>
 
       <div v-if="!submitted" class="bottom">
-        <van-button type="primary" block round :loading="submitting" @click="submit">交卷</van-button>
+        <van-button type="primary" block round :loading="submitting" :disabled="saving" @click="submit">{{ deadlineChecked ? '重试交卷' : '交卷' }}</van-button>
       </div>
       <div v-else class="bottom">
         <van-button type="primary" block round @click="router.push('/exams')">返回考试列表</van-button>

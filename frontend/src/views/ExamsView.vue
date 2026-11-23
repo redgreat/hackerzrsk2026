@@ -2,13 +2,14 @@
 import { api } from '@/api'
 import type { PaperCard } from '@/types'
 import { scoreColor } from '@/utils/labels'
-import { showFailToast, showToast } from 'vant'
+import { closeToast, showFailToast, showLoadingToast } from 'vant'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const papers = ref<PaperCard[]>([])
 const loading = ref(true)
+const starting = ref(false)
 
 onMounted(async () => {
   try {
@@ -23,12 +24,18 @@ onMounted(async () => {
 const SECTION_ICON: Record<string, string> = { quiz: 'edit', listening: 'service-o', roleplay: 'user-o' }
 
 async function start(p: PaperCard) {
-  showToast({ message: '正在生成试卷…', duration: 0, forbidClick: true, type: 'loading' })
+  if (starting.value) return
+  starting.value = true
+  showLoadingToast({ message: '正在生成试卷…', duration: 0, forbidClick: true })
   try {
     const a = await api.startExam(p.id)
-    router.push(`/attempt/${a.id}`)
+    closeToast()
+    await router.push(`/attempt/${a.id}`)
   } catch (e) {
+    closeToast()
     showFailToast((e as Error).message)
+  } finally {
+    starting.value = false
   }
 }
 </script>

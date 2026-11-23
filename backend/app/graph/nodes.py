@@ -18,14 +18,27 @@ from app.prompts.customer import customer_system
 from app.prompts.evaluator import evaluator_messages_text
 from app.prompts.hint import hint_messages_text
 from app.services.memory import describe_profile, load_profile, save_practice_result
+from app.services.scenarios import Rubric, Scenario
 
 
 def _seq(state: PracticeState) -> int:
     return len(state.get("transcript", []))
 
 
+def _scenario(state: PracticeState, ctx: PracticeContext) -> Scenario:
+    if snapshot := state.get("scenario_snapshot"):
+        return Scenario.model_validate(snapshot["scenario"])
+    return ctx.scenarios.get(state["scenario_id"])
+
+
+def _rubric(state: PracticeState, ctx: PracticeContext, scenario: Scenario) -> Rubric:
+    if snapshot := state.get("scenario_snapshot"):
+        return Rubric.model_validate(snapshot["rubric"])
+    return ctx.scenarios.rubric_for(scenario)
+
+
 async def init_scenario(state: PracticeState, runtime: Runtime[PracticeContext]) -> dict:
-    scenario = runtime.context.scenarios.get(state["scenario_id"])
+    scenario = _scenario(state, runtime.context)
     r = scenario.state_rules
     update: dict = {
         "trust": r.initial_trust,
@@ -65,12 +78,12 @@ def route_input(state: PracticeState) -> str:
 
 async def evaluate_turn(state: PracticeState, runtime: Runtime[PracticeContext]) -> dict:
     ctx = runtime.context
-    scenario = ctx.scenarios.get(state["scenario_id"])
+    scenario = _scenario(state, ctx)
     said = state["pending"]["text"].strip()
     if rules.clearly_off_topic(said):
         return _off_topic_turn(state, said)
     turn = state["turn"] + 1
-    rubric = ctx.scenarios.rubric_for(scenario)
+    rubric = _rubric(state, ctx, scenario)
     system, user = evaluator_messages_text(
         scenario,
         state["trust"],
@@ -140,7 +153,7 @@ def _off_topic_turn(state: PracticeState, said: str) -> dict:
 
 async def customer_reply(state: PracticeState, runtime: Runtime[PracticeContext]) -> dict:
     ctx = runtime.context
-    scenario = ctx.scenarios.get(state["scenario_id"])
+    scenario = _scenario(state, ctx)
     redirect = "咱们还是说正事吧，你刚才是想跟我确认什么？"
     off_topic = state["transcript"][-1].get("meta", {}).get("off_topic", False)
     text = "这个先不聊。你打这通电话是想跟我确认什么？"
@@ -181,7 +194,7 @@ async def _references(ctx: PracticeContext, query: str, scenario_id: str, k: int
 
 async def hint(state: PracticeState, runtime: Runtime[PracticeContext]) -> dict:
     ctx = runtime.context
-    scenario = ctx.scenarios.get(state["scenario_id"])
+    scenario = _scenario(state, ctx)
     last_customer = next(
         (t["content"] for t in reversed(state.get("transcript", [])) if t["role"] == "customer"), ""
     )
@@ -203,8 +216,8 @@ async def hint(state: PracticeState, runtime: Runtime[PracticeContext]) -> dict:
 
 async def coach_report(state: PracticeState, runtime: Runtime[PracticeContext]) -> dict:
     ctx = runtime.context
-    scenario = ctx.scenarios.get(state["scenario_id"])
-    rubric = ctx.scenarios.rubric_for(scenario)
+    scenario = _scenario(state, ctx)
+    rubric = _rubric(state, ctx, scenario)
     status = "user_end" if state["status"] == "ongoing" else state["status"]
     runtime.stream_writer({"type": "status", "status": status})
     base = {

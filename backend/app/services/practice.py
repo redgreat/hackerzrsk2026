@@ -16,10 +16,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.errors import AppError, Conflict, Forbidden, NotFound
-from app.db.models import PracticeMessage, PracticeSession, User
+from app.db.models import ExamAttempt, PracticeMessage, PracticeSession, User
 from app.db.usage import add_usage
 from app.graph.state import PracticeContext
 from app.services.llm.usage import UsageScope, usage_scope
+from app.services.scenarios import Scenario
 
 logger = logging.getLogger(__name__)
 Sink = Callable[[dict], Awaitable[None]]
@@ -169,8 +170,13 @@ class PracticeService:
         scenario_id: str,
         mode: str = "practice",
         exam_attempt_id: uuid.UUID | None = None,
+        scenario_snapshot: dict | None = None,
     ) -> dict:
-        scenario = self.ctx.scenarios.get(scenario_id)
+        scenario = (
+            Scenario.model_validate(scenario_snapshot["scenario"])
+            if scenario_snapshot
+            else self.ctx.scenarios.get(scenario_id)
+        )
         sid = uuid.uuid4()
         async with self.sf() as db, db.begin():
             db.add(
@@ -183,9 +189,10 @@ class PracticeService:
                     exam_attempt_id=exam_attempt_id,
                 )
             )
-        await self._run_command(
-            sid, user, {"session_id": str(sid), "user_id": user.userid, "scenario_id": scenario.id}
-        )
+        payload = {"session_id": str(sid), "user_id": user.userid, "scenario_id": scenario.id}
+        if scenario_snapshot:
+            payload["scenario_snapshot"] = scenario_snapshot
+        await self._run_command(sid, user, payload)
         return await self.detail(sid, user)
 
     async def open_message_stream(self, sid: uuid.UUID, user: User, text: str) -> AsyncIterator[dict]:
@@ -196,7 +203,14 @@ class PracticeService:
         if len(text) > MAX_INPUT_CHARS:
             raise AppError(f"单条消息不超过 {MAX_INPUT_CHARS} 字")
         async with self.sf() as db:
-            await self._owned(db, sid, user)
+            session = await self._owned(db, sid, user)
+            if session.exam_attempt_id:
+                attempt = await db.get(ExamAttempt, session.exam_attempt_id)
+                if attempt is not None and (
+                    attempt.status != "in_progress"
+                    or (attempt.deadline_at is not None and attempt.deadline_at <= datetime.now(UTC))
+                ):
+                    raise Conflict("考试已结束")
         lock = await self._acquire_input(sid)
 
         queue: asyncio.Queue[dict | None] = asyncio.Queue()
@@ -255,6 +269,10 @@ class PracticeService:
                 .all()
             )
         scenario = self.ctx.scenarios.scenarios.get(sess.scenario_id)
+        if sess.exam_attempt_id:
+            values = (await self.graph.aget_state(self._config(sid))).values
+            if snapshot := values.get("scenario_snapshot"):
+                scenario = Scenario.model_validate(snapshot["scenario"])
         finished = sess.status != "ongoing"
         return {
             **session_summary(sess),

@@ -40,11 +40,8 @@ function push(role: Message['role'], content: string) {
 onMounted(async () => {
   try {
     const [s, sc] = await Promise.all([api.session(sid), api.speechConfig()])
-    if (s.status !== 'ongoing' && s.report_ready) {
-      if (s.mode === 'exam' && s.exam_attempt_id) return router.replace(`/attempt/${s.exam_attempt_id}`)
-      return router.replace(`/report/${sid}`)
-    }
     session.value = s
+    if (s.status !== 'ongoing' && s.report_ready) return showResult()
     retryReport.value = s.status !== 'ongoing'
     messages.value = s.messages
     turn.value = s.turns
@@ -103,8 +100,13 @@ async function send(text: string) {
   }
   if (finished) {
     ending.value = true
-    setTimeout(() => router.replace(`/report/${sid}`), 1200)
+    setTimeout(showResult, 1200)
   }
+}
+
+function showResult() {
+  const aid = session.value?.exam_attempt_id
+  return router.replace(aid ? `/attempt/${aid}` : `/report/${sid}`)
 }
 
 async function onPressStart() {
@@ -159,7 +161,7 @@ async function endPractice() {
   ending.value = true
   try {
     await api.end(sid)
-    router.replace(`/report/${sid}`)
+    showResult()
   } catch (e) {
     ending.value = false
     retryReport.value = true
@@ -204,7 +206,7 @@ async function endPractice() {
       </div>
     </div>
 
-    <div class="toolbar">
+    <div v-if="session" class="toolbar">
       <div class="actions">
         <span class="muted">第 {{ turn }} 轮<van-tag v-if="session?.mode === 'exam'" type="danger" style="margin-left: 6px">考试</van-tag></span>
         <div>

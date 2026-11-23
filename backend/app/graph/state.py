@@ -18,6 +18,7 @@ class PracticeState(TypedDict, total=False):
     session_id: str
     user_id: str
     scenario_id: str
+    scenario_snapshot: dict
     # 客户 Agent 的对话上下文：员工=Human，客户=AI
     messages: Annotated[list[AnyMessage], add_messages]
     # 面向展示/落库的逐条记录（含求助），只追加；seq 全局递增

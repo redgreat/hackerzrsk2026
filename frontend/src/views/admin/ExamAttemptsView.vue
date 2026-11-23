@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@/api'
 import type { AdminAttempt } from '@/types'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -9,8 +10,27 @@ const items = ref<AdminAttempt[]>([])
 const total = ref(0)
 const page = ref(1)
 const paperId = ref('')
-const papers = ref<{ id: string; name: string }[]>([])
+const papers = ref<Awaited<ReturnType<typeof api.admin.papers>>>([])
 const loading = ref(false)
+const publishing = ref('')
+
+async function publish(id: string) {
+  try {
+    await ElMessageBox.confirm('新开考的学员将使用本次发布的题目和评分规则。已开考的学员继续使用原版本。', '发布试卷')
+  } catch {
+    return
+  }
+  publishing.value = id
+  try {
+    await api.admin.publishPaper(id)
+    papers.value = await api.admin.papers()
+    ElMessage.success('试卷已发布')
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    publishing.value = ''
+  }
+}
 
 async function load() {
   loading.value = true
@@ -18,17 +38,36 @@ async function load() {
     const r = await api.admin.attempts({ paper_id: paperId.value, page: page.value, size: 20 })
     items.value = r.items
     total.value = r.total
+  } catch (error) {
+    ElMessage.error((error as Error).message)
   } finally {
     loading.value = false
   }
 }
 onMounted(async () => {
-  papers.value = (await api.admin.papers()).map((p) => ({ id: p.id, name: p.name }))
-  load()
+  try {
+    papers.value = await api.admin.papers()
+    await load()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  }
 })
 </script>
 
 <template>
+  <el-table :data="papers.filter((p) => p.kind === 'exam' && p.enabled)" border style="margin-bottom: 16px">
+    <el-table-column prop="name" label="正式试卷" />
+    <el-table-column label="发布状态">
+      <template #default="{ row }">{{ row.publication_id ? `已发布 · 版本 ${row.publication_id}` : '待发布' }}</template>
+    </el-table-column>
+    <el-table-column label="操作">
+      <template #default="{ row }">
+        <el-button :loading="publishing === row.id" :disabled="!!publishing" @click="publish(row.id)">
+          {{ row.publication_id ? '发布当前配置为新版本' : '发布试卷' }}
+        </el-button>
+      </template>
+    </el-table-column>
+  </el-table>
   <div style="margin-bottom: 12px; display: flex; gap: 8px">
     <el-select v-model="paperId" placeholder="全部试卷" clearable style="width: 220px" @change="page = 1; load()">
       <el-option v-for="p in papers" :key="p.id" :label="p.name" :value="p.id" />

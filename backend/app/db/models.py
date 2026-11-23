@@ -177,6 +177,16 @@ class RecordingQuestion(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="pending", comment="pending/approved/rejected")
 
 
+class ExamPublication(Base):
+    __tablename__ = "exam_publications"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    paper_id: Mapped[str] = mapped_column(String(32), index=True)
+    paper: Mapped[dict] = mapped_column(JSONB)
+    sections: Mapped[list] = mapped_column(JSONB)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class ExamAttempt(TimestampMixin, Base):
     __tablename__ = "exam_attempts"
     __table_args__ = (
@@ -187,6 +197,7 @@ class ExamAttempt(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     paper_id: Mapped[str] = mapped_column(String(32))
+    publication_id: Mapped[int | None] = mapped_column(ForeignKey("exam_publications.id"))
     paper_name: Mapped[str] = mapped_column(String(128), default="")
     kind: Mapped[str] = mapped_column(String(16), default="exam", comment="exam/self_test")
     status: Mapped[str] = mapped_column(String(16), default="in_progress", comment="in_progress/submitted")

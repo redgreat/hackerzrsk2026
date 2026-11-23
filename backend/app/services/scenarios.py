@@ -146,3 +146,9 @@ class ScenarioRegistry:
 
     def rubric_for(self, scenario: Scenario) -> Rubric:
         return self.rubrics[scenario.scoring]
+
+    def snapshot(self, scenario: Scenario) -> dict:
+        return {
+            "scenario": scenario.model_dump(mode="json"),
+            "rubric": self.rubric_for(scenario).model_dump(mode="json"),
+        }

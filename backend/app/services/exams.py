@@ -17,14 +17,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.errors import AppError, Conflict, Forbidden, NotFound
-from app.db.models import ExamAttempt, PracticeSession, User
+from app.db.models import ExamAttempt, ExamPublication, PracticeSession, User
 from app.services import exam_rules
 from app.services.practice import PracticeService
 from app.services.recordings import RecordingService
 from app.services.scenarios import ScenarioRegistry
 
 logger = logging.getLogger(__name__)
-GRACE_SECONDS = 60
 
 
 class Question(BaseModel):
@@ -180,7 +179,13 @@ class ExamService:
                 for sid in ids:
                     sc = self.scenarios.get(sid)
                     items.append(
-                        {"key": f"s:{sid}", "scenario_id": sid, "scenario_name": sc.name, "session_id": None}
+                        {
+                            "key": f"s:{sid}",
+                            "scenario_id": sid,
+                            "scenario_name": sc.name,
+                            "session_id": None,
+                            "scenario_snapshot": self.scenarios.snapshot(sc),
+                        }
                     )
             if paper.shuffle and s.type != "roleplay":
                 random.shuffle(items)
@@ -190,6 +195,47 @@ class ExamService:
             raise AppError("试卷暂无可用题目，请联系管理员")
         return sections
 
+    async def publish(self, paper_id: str) -> dict:
+        paper = self.registry.get(paper_id)
+        if paper.kind != "exam" or any(s.type == "listening" for s in paper.sections):
+            raise AppError("仅可发布不含录音题的正式试卷")
+        publication = ExamPublication(
+            paper_id=paper.id,
+            paper=paper.model_dump(mode="json"),
+            sections=await self._build_sections(paper),
+        )
+        async with self.sf() as db, db.begin():
+            db.add(publication)
+            await db.flush()
+            return {"id": publication.id, "paper_id": paper.id}
+
+    async def _publication(self, db: AsyncSession, paper_id: str) -> ExamPublication | None:
+        return await db.scalar(
+            select(ExamPublication)
+            .where(ExamPublication.paper_id == paper_id)
+            .order_by(ExamPublication.id.desc())
+            .limit(1)
+        )
+
+    async def _attempt_paper(self, db: AsyncSession, attempt: ExamAttempt) -> Paper | None:
+        if attempt.publication_id is not None:
+            publication = await db.get(ExamPublication, attempt.publication_id)
+            return Paper.model_validate(publication.paper)
+        return self.registry.papers.get(attempt.paper_id)
+
+    async def admin_papers(self) -> list[dict]:
+        async with self.sf() as db:
+            rows = await db.execute(
+                select(ExamPublication.paper_id, func.max(ExamPublication.id)).group_by(
+                    ExamPublication.paper_id
+                )
+            )
+            versions = dict(rows.all())
+        return [
+            {**paper_card(p), "enabled": p.enabled, "publication_id": versions.get(p.id)}
+            for p in self.registry.papers.values()
+        ]
+
     async def _count_attempts(self, db: AsyncSession, user: User, paper_id: str) -> int:
         return (
             await db.execute(
@@ -198,40 +244,54 @@ class ExamService:
         ).scalar_one()
 
     async def start(self, user: User, paper_id: str) -> dict:
-        paper = self.registry.get(paper_id)
-        async with self.sf() as db:
+        async with self.sf() as db, db.begin():
+            # 同一员工重复开考时复用未交卷的记录。
+            await db.get(User, user.id, with_for_update=True)
             ongoing = (
-                await db.execute(
-                    select(ExamAttempt.id).where(
-                        ExamAttempt.user_id == user.id,
-                        ExamAttempt.paper_id == paper_id,
-                        ExamAttempt.status == "in_progress",
+                (
+                    await db.execute(
+                        select(ExamAttempt.id).where(
+                            ExamAttempt.user_id == user.id,
+                            ExamAttempt.paper_id == paper_id,
+                            ExamAttempt.status == "in_progress",
+                        )
                     )
                 )
-            ).scalar_one_or_none()
-            used = await self._count_attempts(db, user, paper_id)
-        if ongoing:
-            return await self.view(ongoing, user)
-        if paper.kind == "exam" and paper.max_attempts and used >= paper.max_attempts:
-            raise Forbidden(f"该考试最多可参加 {paper.max_attempts} 次，您已用完")
-        sections = await self._build_sections(paper)
-        now = _now()
-        attempt = ExamAttempt(
-            id=uuid.uuid4(),
-            user_id=user.id,
-            paper_id=paper.id,
-            paper_name=paper.name,
-            kind=paper.kind,
-            sections=sections,
-            answers={},
-            started_at=now,
-            deadline_at=now + timedelta(minutes=paper.time_limit_minutes)
-            if paper.time_limit_minutes
-            else None,
-        )
-        async with self.sf() as db, db.begin():
-            db.add(attempt)
-        return await self.view(attempt.id, user)
+                .scalars()
+                .first()
+            )
+            if ongoing is None:
+                paper = self.registry.get(paper_id)
+                publication = await self._publication(db, paper_id) if paper.kind == "exam" else None
+                if paper.kind == "exam" and publication is None:
+                    raise NotFound("试卷尚未发布")
+                if publication:
+                    paper = Paper.model_validate(publication.paper)
+                    if (
+                        paper.max_attempts
+                        and await self._count_attempts(db, user, paper_id) >= paper.max_attempts
+                    ):
+                        raise Forbidden(f"该考试最多可参加 {paper.max_attempts} 次，您已用完")
+                sections = publication.sections if publication else await self._build_sections(paper)
+                now = _now()
+                ongoing = uuid.uuid4()
+                db.add(
+                    ExamAttempt(
+                        id=ongoing,
+                        user_id=user.id,
+                        paper_id=paper.id,
+                        paper_name=paper.name,
+                        publication_id=publication.id if publication else None,
+                        kind=paper.kind,
+                        sections=sections,
+                        answers={},
+                        started_at=now,
+                        deadline_at=now + timedelta(minutes=paper.time_limit_minutes)
+                        if paper.time_limit_minutes
+                        else None,
+                    )
+                )
+        return await self.view(ongoing, user)
 
     # ---------- 作答 ----------
 
@@ -244,15 +304,15 @@ class ExamService:
         return a
 
     @staticmethod
-    def _expired(a: ExamAttempt, grace: int = 0) -> bool:
-        return a.deadline_at is not None and _now() > a.deadline_at + timedelta(seconds=grace)
+    def _expired(a: ExamAttempt) -> bool:
+        return a.deadline_at is not None and _now() >= a.deadline_at
 
     async def save_answers(self, aid: uuid.UUID, user: User, answers: dict[str, list[int]]) -> dict:
         async with self.sf() as db, db.begin():
             a = await self._owned(db, aid, user, lock=True)
             if a.status != "in_progress":
                 raise Conflict("已交卷，不能再修改答案")
-            if self._expired(a, GRACE_SECONDS):
+            if self._expired(a):
                 raise Conflict("考试时间已到")
             valid = {it["key"]: it for s in a.sections if s["type"] != "roleplay" for it in s["items"]}
             merged = dict(a.answers or {})
@@ -266,21 +326,26 @@ class ExamService:
         return {"saved": len(merged)}
 
     async def start_roleplay(self, aid: uuid.UUID, user: User, key: str) -> dict:
-        async with self.sf() as db:
-            a = await self._owned(db, aid, user)
-        if a.status != "in_progress" or self._expired(a):
-            raise Conflict("考试已结束")
-        item = next(
-            (it for s in a.sections if s["type"] == "roleplay" for it in s["items"] if it["key"] == key), None
-        )
-        if item is None:
-            raise NotFound("对练题不存在")
-        if item.get("session_id"):
-            return {"session_id": item["session_id"]}
-        mode = "exam" if a.kind == "exam" else "practice"
-        session = await self.practice.start(user, item["scenario_id"], mode=mode, exam_attempt_id=aid)
         async with self.sf() as db, db.begin():
             a = await self._owned(db, aid, user, lock=True)
+            if a.status != "in_progress" or self._expired(a):
+                raise Conflict("考试已结束")
+            item = next(
+                (it for s in a.sections if s["type"] == "roleplay" for it in s["items"] if it["key"] == key),
+                None,
+            )
+            if item is None:
+                raise NotFound("对练题不存在")
+            if item.get("session_id"):
+                return {"session_id": item["session_id"]}
+            mode = "exam" if a.kind == "exam" else "practice"
+            session = await self.practice.start(
+                user,
+                item["scenario_id"],
+                mode=mode,
+                exam_attempt_id=aid,
+                scenario_snapshot=item.get("scenario_snapshot"),
+            )
             sections = [
                 {
                     **s,
@@ -304,31 +369,26 @@ class ExamService:
         return out
 
     async def submit(self, aid: uuid.UUID, user: User) -> dict:
-        async with self.sf() as db:
-            a = await self._owned(db, aid, user)
-            if a.status != "in_progress":
-                return await self.view(aid, user)
-            sessions = await self._roleplay_scores(db, a)
-        # 进行中的对练：已开口的自动结束并生成报告；未开口的计 0 分
-        for sess in sessions.values():
-            if sess is not None and sess.report is None and sess.turns > 0:
-                try:
-                    await self.practice.end(sess.id, user)
-                except Conflict as exc:
-                    raise Conflict("对练报告正在生成，请稍后再交卷") from exc
         async with self.sf() as db, db.begin():
             a = await self._owned(db, aid, user, lock=True)
-            if a.status != "in_progress":
-                return await self.view(aid, user)
-            sessions = await self._roleplay_scores(db, a)
-            scores = {k: (s.total_score if s is not None and s.report else None) for k, s in sessions.items()}
-            result = exam_rules.grade(a.sections, a.answers or {}, scores)
-            paper = self.registry.papers.get(a.paper_id)
-            a.result = result
-            a.score = result["total"]
-            a.passed = result["total"] >= (paper.pass_score if paper else 60)
-            a.status = "submitted"
-            a.submitted_at = _now()
+            if a.status == "in_progress":
+                scores = {}
+                for key, sess in (await self._roleplay_scores(db, a)).items():
+                    if sess is None:
+                        scores[key] = None
+                        continue
+                    try:
+                        report = sess.report or await self.practice.end(sess.id, user)
+                    except Conflict as exc:
+                        raise Conflict("对练报告正在生成，请稍后再交卷") from exc
+                    scores[key] = report["total_score"]
+                result = exam_rules.grade(a.sections, a.answers or {}, scores)
+                paper = await self._attempt_paper(db, a)
+                a.result = result
+                a.score = result["total"]
+                a.passed = result["total"] >= (paper.pass_score if paper else 60)
+                a.status = "submitted"
+                a.submitted_at = _now()
         return await self.view(aid, user)
 
     # ---------- 查询 ----------
@@ -336,18 +396,24 @@ class ExamService:
     async def view(self, aid: uuid.UUID, user: User) -> dict:
         async with self.sf() as db:
             a = await self._owned(db, aid, user)
-            expired = a.status == "in_progress" and self._expired(a, GRACE_SECONDS)
+            expired = a.status == "in_progress" and self._expired(a)
         if expired:
             # 超时自动交卷（按已保存答案判分）
             return await self.submit(aid, user)
         async with self.sf() as db:
             a = await self._owned(db, aid, user)
             sessions = await self._roleplay_scores(db, a)
-        return attempt_view(a, self.registry.papers.get(a.paper_id), sessions)
+            paper = await self._attempt_paper(db, a)
+        return attempt_view(a, paper, sessions)
 
     async def list_papers(self, user: User) -> list[dict]:
-        papers = self.registry.enabled()
         async with self.sf() as db:
+            papers = []
+            for template in self.registry.enabled():
+                if template.kind == "self_test":
+                    papers.append(template)
+                elif publication := await self._publication(db, template.id):
+                    papers.append(Paper.model_validate(publication.paper))
             rows = (
                 await db.execute(
                     select(
@@ -440,7 +506,8 @@ class ExamService:
                 raise NotFound("作答记录不存在")
             u = await db.get(User, a.user_id)
             sessions = await self._roleplay_scores(db, a)
-        view = attempt_view(a, self.registry.papers.get(a.paper_id), sessions, reveal=True)
+            paper = await self._attempt_paper(db, a)
+        view = attempt_view(a, paper, sessions, reveal=True)
         return {**view, "user": {"id": u.id, "userid": u.userid, "name": u.name, "department": u.department}}
 
 

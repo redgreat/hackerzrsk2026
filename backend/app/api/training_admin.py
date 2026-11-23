@@ -7,7 +7,6 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.api.deps import AdminDep, ContainerDep
-from app.services.exams import paper_card
 from app.services.recording_source import RecordingItem
 
 router = APIRouter(prefix="/admin", tags=["admin-training"])
@@ -85,10 +84,12 @@ async def patch_question(qid: int, body: QuestionPatch, c: ContainerDep, _: Admi
 
 @router.get("/exams/papers")
 async def papers(c: ContainerDep, _: AdminDep) -> list[dict]:
-    return [
-        {**paper_card(p), "department": p.department, "enabled": p.enabled}
-        for p in c.exams.registry.papers.values()
-    ]
+    return await c.exams.admin_papers()
+
+
+@router.post("/exams/papers/{paper_id}/publish")
+async def publish_paper(paper_id: str, c: ContainerDep, _: AdminDep) -> dict:
+    return await c.exams.publish(paper_id)
 
 
 @router.get("/exams/attempts")
