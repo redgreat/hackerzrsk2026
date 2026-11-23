@@ -20,12 +20,9 @@ class MessageIn(BaseModel):
     text: str = Field(min_length=1, max_length=500)
 
 
-def _sse(events: AsyncIterator[dict]) -> AsyncIterator[str]:
-    async def gen() -> AsyncIterator[str]:
-        async for ev in events:
-            yield f"event: {ev['type']}\ndata: {json.dumps(ev, ensure_ascii=False)}\n\n"
-
-    return gen()
+async def _sse(events: AsyncIterator[dict]) -> AsyncIterator[str]:
+    async for ev in events:
+        yield f"event: {ev['type']}\ndata: {json.dumps(ev, ensure_ascii=False)}\n\n"
 
 
 @router.post("")

@@ -32,7 +32,7 @@ def test_token_cost():
 
 def test_parse_knowledge(settings: Settings):
     root = settings.knowledge_dir
-    chunks = parse_markdown(root / "customer_service.md", root)
+    chunks = parse_markdown(root / "客户服务话术.md", root)
     assert len(chunks) >= 3
     assert chunks[0].scenario_ids == ["S02", "S03"]
     assert "/" in chunks[0].title

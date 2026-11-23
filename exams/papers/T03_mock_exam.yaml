@@ -1,8 +1,8 @@
-# 模拟考试：结构同上岗考试，不限次、可看解析
+# 模拟考试：知识题 + 一场对练，不限次、可看解析
 id: T03
 name: 上岗模拟考
 kind: self_test
-description: 与正式考试结构一致（知识题 + 一场对练），用于考前热身。
+description: 知识题 + 一场对练，用于考前热身，不包含听录音题。
 department: [催收, 贷后]
 pass_score: 80
 time_limit_minutes: 30

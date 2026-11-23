@@ -16,7 +16,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.errors import AppError, Conflict, Forbidden, NotFound
-from app.db.models import ModelUsage, PracticeMessage, PracticeSession, User
+from app.db.models import PracticeMessage, PracticeSession, User
+from app.db.usage import add_usage
 from app.graph.state import PracticeContext
 from app.services.llm.usage import UsageScope, usage_scope
 
@@ -60,6 +61,17 @@ class PracticeService:
     async def _next_nodes(self, sid: uuid.UUID) -> tuple[str, ...]:
         return (await self.graph.aget_state(self._config(sid))).next
 
+    async def _acquire_input(self, sid: uuid.UUID) -> asyncio.Lock:
+        """发送消息与求助共用：加锁后确认图正在等待输入，校验失败释放锁。"""
+        lock = await self._acquire(sid)
+        try:
+            if await self._next_nodes(sid) != ("wait_input",):
+                raise Conflict("本次练习已结束")
+        except BaseException:
+            lock.release()
+            raise
+        return lock
+
     # ---------- 图运行与落库 ----------
 
     async def _run(self, sid: uuid.UUID, user: User, cmd, sink: Sink) -> dict:
@@ -67,11 +79,8 @@ class PracticeService:
         error: str | None = None
         with usage_scope() as usage:
             try:
-                async for mode, chunk in self.graph.astream(
-                    cmd, config, context=self.ctx, stream_mode=["custom", "updates"]
-                ):
-                    if mode == "custom":
-                        await sink(chunk)
+                async for event in self.graph.astream(cmd, config, context=self.ctx, stream_mode="custom"):
+                    await sink(event)
             except AppError as exc:
                 error = exc.message
             except Exception:
@@ -118,29 +127,7 @@ class PracticeService:
                 sess.report = report
                 sess.total_score = report["total_score"]
                 sess.ended_at = datetime.now(UTC)
-            self._add_usage(db, sess, user_id, usage)
-
-    @staticmethod
-    def _add_usage(db: AsyncSession, sess: PracticeSession | None, user_id: int, usage: UsageScope) -> None:
-        for r in usage.records:
-            db.add(
-                ModelUsage(
-                    session_id=sess.id if sess else None,
-                    user_id=user_id,
-                    purpose=r.purpose,
-                    model=r.model,
-                    prompt_tokens=r.prompt_tokens,
-                    completion_tokens=r.completion_tokens,
-                    audio_seconds=r.audio_seconds,
-                    tts_chars=r.tts_chars,
-                    cost_yuan=r.cost_yuan,
-                    latency_ms=r.latency_ms,
-                )
-            )
-        if sess is not None:
-            sess.prompt_tokens += usage.prompt_tokens
-            sess.completion_tokens += usage.completion_tokens
-            sess.cost_yuan += usage.cost_yuan
+            add_usage(db, sess, user_id, usage)
 
     async def record_usage(self, sid: uuid.UUID | None, user: User, usage: UsageScope) -> None:
         """语音等图外调用的计量落库（计入会话成本）。"""
@@ -152,7 +139,7 @@ class PracticeService:
                 sess = await db.get(PracticeSession, sid, with_for_update=True)
                 if sess is not None and sess.user_id != user.id:
                     sess = None
-            self._add_usage(db, sess, user.id, usage)
+            add_usage(db, sess, user.id, usage)
 
     async def _run_locked(self, sid: uuid.UUID, user: User, cmd, lock: asyncio.Lock, sink: Sink) -> dict:
         """lock 由调用方已获取，这里负责释放。"""
@@ -161,18 +148,18 @@ class PracticeService:
         finally:
             lock.release()
 
-    async def _run_collect(
-        self, sid: uuid.UUID, user: User, cmd, lock: asyncio.Lock | None = None
-    ) -> tuple[dict, list[dict]]:
-        events: list[dict] = []
+    async def _run_command(self, sid: uuid.UUID, user: User, cmd, lock: asyncio.Lock | None = None) -> dict:
+        error: str | None = None
 
         async def sink(ev: dict) -> None:
-            events.append(ev)
+            nonlocal error
+            if ev["type"] == "error":
+                error = ev["message"]
 
         values = await self._run_locked(sid, user, cmd, lock or await self._acquire(sid), sink)
-        if err := next((e for e in events if e["type"] == "error"), None):
-            raise AppError(err["message"])
-        return values, events
+        if error:
+            raise AppError(error)
+        return values
 
     # ---------- 业务接口 ----------
 
@@ -196,7 +183,7 @@ class PracticeService:
                     exam_attempt_id=exam_attempt_id,
                 )
             )
-        await self._run_collect(
+        await self._run_command(
             sid, user, {"session_id": str(sid), "user_id": user.userid, "scenario_id": scenario.id}
         )
         return await self.detail(sid, user)
@@ -210,10 +197,7 @@ class PracticeService:
             raise AppError(f"单条消息不超过 {MAX_INPUT_CHARS} 字")
         async with self.sf() as db:
             await self._owned(db, sid, user)
-        lock = await self._acquire(sid)
-        if await self._next_nodes(sid) != ("wait_input",):
-            lock.release()
-            raise Conflict("本次练习已结束")
+        lock = await self._acquire_input(sid)
 
         queue: asyncio.Queue[dict | None] = asyncio.Queue()
         task = asyncio.create_task(
@@ -232,11 +216,8 @@ class PracticeService:
         async with self.sf() as db:
             if (await self._owned(db, sid, user)).mode == "exam":
                 raise Forbidden("考试中不能使用求助提示")
-        lock = await self._acquire(sid)
-        if await self._next_nodes(sid) != ("wait_input",):
-            lock.release()
-            raise Conflict("本次练习已结束")
-        values, _ = await self._run_collect(sid, user, Command(resume={"type": "hint"}), lock)
+        lock = await self._acquire_input(sid)
+        values = await self._run_command(sid, user, Command(resume={"type": "hint"}), lock)
         return values.get("last_hint") or ""
 
     async def end(self, sid: uuid.UUID, user: User) -> dict:
@@ -245,15 +226,18 @@ class PracticeService:
             if sess.report:
                 return sess.report
         lock = await self._acquire(sid)
-        nxt = await self._next_nodes(sid)
-        if "wait_input" in nxt:
-            cmd = Command(resume={"type": "end"})
-        elif "coach_report" in nxt:
-            cmd = None  # 上次生成报告失败，从检查点续跑
-        else:
+        try:
+            nxt = await self._next_nodes(sid)
+            if "wait_input" in nxt:
+                cmd = Command(resume={"type": "end"})
+            elif "coach_report" in nxt:
+                cmd = None  # 上次生成报告失败，从检查点续跑
+            else:
+                raise Conflict("报告正在生成中，请稍候")
+        except BaseException:
             lock.release()
-            raise Conflict("报告正在生成中，请稍候")
-        values, _ = await self._run_collect(sid, user, cmd, lock)
+            raise
+        values = await self._run_command(sid, user, cmd, lock)
         return values["report"]
 
     async def detail(self, sid: uuid.UUID, user: User) -> dict:

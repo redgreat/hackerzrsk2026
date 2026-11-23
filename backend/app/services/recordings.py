@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.core.errors import AppError, Conflict, NotFound
 from app.db.models import Recording, RecordingQuestion
+from app.db.usage import add_usage
 from app.graph.schemas import RecordingAnalysis
 from app.prompts.analyst import analyst_messages_text
 from app.services import recording_rules as rr
@@ -25,7 +26,6 @@ from app.services.file_asr import FileASR
 from app.services.knowledge import KnowledgeBase, ParsedChunk
 from app.services.llm import LLMGateway
 from app.services.llm.usage import UsageScope, usage_scope
-from app.services.practice import PracticeService
 from app.services.recording_source import RecordingItem
 from app.services.scenarios import ScenarioRegistry
 
@@ -85,7 +85,7 @@ class RecordingService:
     async def _record_usage(self, usage: UsageScope, user_id: int | None) -> None:
         if usage.records:
             async with self.sf() as db, db.begin():
-                PracticeService._add_usage(db, None, user_id, usage)
+                add_usage(db, None, user_id, usage)
 
     async def process(self, rid: int, force: bool = False, user_id: int | None = None) -> dict:
         """转写（如需要）+ 分析。失败时状态置为 failed 并记录原因，不抛出。"""
