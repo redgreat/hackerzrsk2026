@@ -411,10 +411,15 @@ export interface KnowledgeReviewData {
   applicability_limits: string[]
 }
 export interface KnowledgeEventCard {
+  cleanup_status?: string
   id: number; title: string; event_key: string; source_key: string
   status: string; revision: number; segment_start: number; segment_end: number
 }
 export interface KnowledgeEventDetail extends KnowledgeEventCard {
+  cleanups: { id: number; status: string; model: string; created_at: string; result: {
+    title: string; summary: string; dialogue: { speaker: string; text: string; source_seqs: number[]; added: boolean }[];
+    changes: string[]; issues: { severity: string; category: string; description: string }[]; checks: string[]; learning_points: string[]
+  } }[]
   data: KnowledgeReviewData; original: KnowledgeReviewData
   evidence_seqs: number[]
   segments: { seq: number; channel: number; start_raw: number; end_raw: number; text: string }[]

@@ -244,3 +244,17 @@ class KnowledgeEvent(TimestampMixin, Base):
     review_data: Mapped[dict | None] = mapped_column(JSONB, comment="人工修订，与原始提取结果分开")
     review_history: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     review_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class TrainingCleanup(TimestampMixin, Base):
+    __tablename__ = "training_cleanups"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("knowledge_events.id"), index=True)
+    input_hash: Mapped[str] = mapped_column(String(64))
+    prepared_input: Mapped[dict] = mapped_column(JSONB, comment="已去标识的本次输入")
+    result: Mapped[dict] = mapped_column(JSONB, comment="培训改编，与原文分开")
+    status: Mapped[str] = mapped_column(String(32), comment="candidate/review_required")
+    model: Mapped[str] = mapped_column(String(128))
+    prompt_version: Mapped[str] = mapped_column(String(32))
+    cost_yuan: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), comment="未配置模型单价时为空")

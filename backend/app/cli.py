@@ -163,6 +163,22 @@ async def _import_transcripts(file: str) -> None:
         await engine.dispose()
 
 
+async def _clean_training(file: str) -> None:
+    from pathlib import Path
+
+    from app.db.session import create_engine, create_session_factory
+    from app.services.llm import LLMGateway
+    from app.services.training_cleanup import cleanup_file
+
+    settings = get_settings()
+    engine = create_engine(settings)
+    try:
+        result = await cleanup_file(create_session_factory(engine), LLMGateway(settings), Path(file))
+        print(f"清洗完成：结果 #{result['id']}，分流 {result['status']}；未启用检索")
+    finally:
+        await engine.dispose()
+
+
 def main() -> None:
     setup_logging(get_settings().log_level)
     parser = argparse.ArgumentParser(prog="python -m app.cli")
@@ -176,6 +192,7 @@ def main() -> None:
             "import-recordings",
             "process-recordings",
             "import-transcripts",
+            "clean-training",
         ],
     )
     parser.add_argument("--userid")
@@ -201,6 +218,10 @@ def main() -> None:
         if not args.file:
             parser.error("import-transcripts 需要 --file")
         _run(_import_transcripts(args.file))
+    elif cmd == "clean-training":
+        if not args.file:
+            parser.error("clean-training 需要 --file（已去标识输入）")
+        _run(_clean_training(args.file))
     else:
         check_scenarios()
 

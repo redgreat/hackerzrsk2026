@@ -78,7 +78,7 @@ onMounted(load)
 <template>
   <el-card shadow="never">
     <h2>知识案例</h2>
-    <p class="muted">对照完整转写核对提取结果。原始提取保留，人工修改和每次审核单独留档。</p>
+    <p class="muted">先看智能清洗的培训候选与修改说明；重大问题再人工处理。原文、改编和人工修订分别保存。</p>
     <el-select v-model="status" placeholder="全部状态" clearable style="width: 160px; margin-bottom: 16px" @change="page = 1; load()">
       <el-option v-for="(label, value) in states" :key="value" :label="label" :value="value" />
     </el-select>
@@ -87,7 +87,8 @@ onMounted(load)
       <el-table-column prop="title" label="标题" min-width="240" />
       <el-table-column prop="source_key" label="来源标识" min-width="210" />
       <el-table-column label="原文范围" width="120"><template #default="{ row }">{{ row.segment_start }}–{{ row.segment_end }}</template></el-table-column>
-      <el-table-column label="审核" width="110"><template #default="{ row }"><el-tag>{{ states[row.status] }}</el-tag></template></el-table-column>
+      <el-table-column label="清洗分流" width="150"><template #default="{ row }"><el-tag :type="row.cleanup_status === 'candidate' ? 'success' : row.cleanup_status === 'review_required' ? 'warning' : 'info'">{{ row.cleanup_status === 'candidate' ? '培训候选' : row.cleanup_status === 'review_required' ? '需人工处理' : '尚未清洗' }}</el-tag></template></el-table-column>
+      <el-table-column label="人工核对" width="110"><template #default="{ row }"><el-tag>{{ states[row.status] }}</el-tag></template></el-table-column>
       <el-table-column label="操作" width="110"><template #default="{ row }"><el-button type="primary" link @click="open(row as KnowledgeEventCard)">查看并核对</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无知识事件，请先导入已有转写与提取结果" /></template>
     </el-table>
@@ -110,7 +111,23 @@ onMounted(load)
           </div>
         </section>
         <section>
-          <h3>提取结果与人工修订</h3>
+          <template v-if="detail.cleanups.length">
+            <h3>智能清洗 · 培训改编</h3>
+            <el-tag :type="detail.cleanups[0]!.status === 'candidate' ? 'success' : 'warning'">{{ detail.cleanups[0]!.status === 'candidate' ? '培训候选（非原文事实）' : '重大问题 · 需要人工处理' }}</el-tag>
+            <h4>{{ detail.cleanups[0]!.result.title }}</h4>
+            <p>{{ detail.cleanups[0]!.result.summary }}</p>
+            <article v-for="(line, i) in detail.cleanups[0]!.result.dialogue" :key="i">
+              <b>{{ line.speaker === 'agent' ? '坐席' : '客户' }}{{ line.added ? ' · 教学补写' : ` · 原片段 ${line.source_seqs.join('、')}` }}</b><p>{{ line.text }}</p>
+            </article>
+            <h4>修改说明</h4><p v-for="(change, i) in detail.cleanups[0]!.result.changes" :key="i">· {{ change }}</p>
+            <h4>问题与分流依据</h4>
+            <p v-if="!detail.cleanups[0]!.result.issues.length && !detail.cleanups[0]!.result.checks.length">未检测到重大问题。尚未启用检索。</p>
+            <p v-for="(issue, i) in detail.cleanups[0]!.result.issues" :key="`issue-${i}`">{{ issue.severity === 'major' ? '重大' : '普通' }}：{{ issue.description }}</p>
+            <p v-for="(check, i) in detail.cleanups[0]!.result.checks" :key="`check-${i}`">{{ check }}</p>
+            <p class="muted">{{ detail.cleanups[0]!.model }} · 保留最近 {{ detail.cleanups.length }} 次清洗版本</p>
+          </template>
+          <el-alert v-else type="info" :closable="false" title="尚无智能清洗结果。准备去标识输入后运行 clean-training，结果会显示在这里。" />
+          <h3 style="margin-top: 20px">提取结果与人工兜底</h3>
           <div class="evidence-links"><span>定位证据：</span><el-button v-for="seq in detail.evidence_seqs" :key="seq" size="small" @click="locate(seq)">#{{ seq }}</el-button></div>
           <el-form label-position="top" @input="dirty = true" @change="dirty = true">
             <el-form-item label="标题"><el-input v-model="form.title" maxlength="256" /></el-form-item>

@@ -54,7 +54,7 @@ class LLMGateway:
             base_url=self.cfg.base_url or None,
             api_key=self.cfg.api_key or None,
             temperature=pc.temperature,
-            timeout=self.cfg.timeout_seconds,
+            timeout=pc.timeout_seconds or self.cfg.timeout_seconds,
             max_retries=self.cfg.max_retries,
             stream_usage=True,
             # 国内厂商普遍只识别 max_tokens（不识别 max_completion_tokens），经 extra_body 直传

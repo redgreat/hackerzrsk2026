@@ -11,7 +11,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 PROJECT_DIR = BACKEND_DIR.parent
 DEV_JWT_SECRET = "dev-only-insecure-secret-change-me-in-prod"
 
-Purpose = Literal["customer", "evaluator", "coach", "hint", "analyst"]
+Purpose = Literal["customer", "evaluator", "coach", "hint", "analyst", "cleanup"]
 
 
 class ModelPrice(BaseModel):
@@ -27,6 +27,7 @@ class PurposeModel(BaseModel):
     model: str | None = None
     temperature: float = 0.3
     max_tokens: int | None = None
+    timeout_seconds: float | None = Field(None, gt=0)
 
 
 class LLMSettings(BaseModel):
@@ -44,6 +45,7 @@ class LLMSettings(BaseModel):
     hint: PurposeModel = PurposeModel(temperature=0.4, max_tokens=300)
     # 优质录音分析（亮点话术、合规点评、听录音题目）
     analyst: PurposeModel = PurposeModel(temperature=0.2, max_tokens=4000)
+    cleanup: PurposeModel = PurposeModel(temperature=0.1, max_tokens=4000, timeout_seconds=180)
     pricing: dict[str, ModelPrice] = Field(
         default_factory=lambda: {"deepseek-chat": ModelPrice(input=2.0, output=8.0)}
     )

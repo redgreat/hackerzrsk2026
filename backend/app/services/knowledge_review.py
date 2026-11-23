@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
 
 from app.core.errors import AppError, Conflict, NotFound
-from app.db.models import KnowledgeEvent, TranscriptSnapshot
+from app.db.models import KnowledgeEvent, TrainingCleanup, TranscriptSnapshot
 from app.services.transcripts import Labels, masked
 
 
@@ -66,7 +66,25 @@ async def list_events(sf, status: str | None, page: int, size: int) -> dict:
                 .limit(size)
             )
         ).all()
-    return {"total": total, "items": [card(e, s) for e, s in rows]}
+        ids = [e.id for e, _ in rows]
+        runs = (
+            (
+                await db.execute(
+                    select(TrainingCleanup.event_id, TrainingCleanup.status)
+                    .where(TrainingCleanup.event_id.in_(ids))
+                    .order_by(TrainingCleanup.id.desc())
+                )
+            ).all()
+            if ids
+            else []
+        )
+        latest = {}
+        for eid, cleanup_status in runs:
+            latest.setdefault(eid, cleanup_status)
+    return {
+        "total": total,
+        "items": [{**card(e, s), "cleanup_status": latest.get(e.id, "unprocessed")} for e, s in rows],
+    }
 
 
 async def get_event(sf, eid: int) -> dict:
@@ -75,6 +93,18 @@ async def get_event(sf, eid: int) -> dict:
         if e is None:
             raise NotFound("知识事件不存在")
         s = await db.get(TranscriptSnapshot, e.snapshot_id)
+        runs = (
+            (
+                await db.execute(
+                    select(TrainingCleanup)
+                    .where(TrainingCleanup.event_id == eid)
+                    .order_by(TrainingCleanup.id.desc())
+                    .limit(5)
+                )
+            )
+            .scalars()
+            .all()
+        )
         return {
             **card(e, s),
             "data": e.review_data or original(e),
@@ -89,6 +119,16 @@ async def get_event(sf, eid: int) -> dict:
             "candidate_use": e.candidate_use,
             "history": e.review_history,
             "retrieval_enabled": False,
+            "cleanups": [
+                {
+                    "id": r.id,
+                    "status": r.status,
+                    "result": r.result,
+                    "model": r.model,
+                    "created_at": r.created_at.isoformat(),
+                }
+                for r in runs
+            ],
         }
 
 
