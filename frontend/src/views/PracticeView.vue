@@ -19,7 +19,7 @@ const ending = ref(false)
 const input = ref('')
 const voiceMode = ref(false)
 const asrEnabled = ref(false)
-const showGoal = ref(true)
+
 const listEl = ref<HTMLElement | null>(null)
 
 const recorder = useRecorder()
@@ -60,7 +60,6 @@ async function send(text: string) {
   if (!text || busy.value) return
   busy.value = true
   input.value = ''
-  showGoal.value = false
   push('user', text)
   streaming.value = ''
   let finished = false
@@ -166,7 +165,8 @@ async function endPractice() {
       </template>
     </van-nav-bar>
 
-    <div v-if="session && showGoal" class="goal" @click="showGoal = false">
+    <div v-if="session" class="goal">
+      <div v-if="session.background"><b>背景：</b>{{ session.background }}</div>
       <b>目标：</b>{{ session.goal }}
       <div v-if="session.opening_tip" class="tip">提示：{{ session.opening_tip }}</div>
     </div>

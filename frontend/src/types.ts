@@ -55,6 +55,7 @@ export interface SessionSummary {
 export interface SessionDetail extends SessionSummary {
   persona: { name: string; role: string } | null
   goal: string
+  background: string
   opening_tip: string | null
   report_ready: boolean
   messages: Message[]

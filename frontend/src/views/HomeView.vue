@@ -3,11 +3,17 @@ import { api } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import type { ScenarioCard } from '@/types'
 import { showFailToast } from 'vant'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 const auth = useAuthStore()
 const scenarios = ref<ScenarioCard[]>([])
 const loading = ref(true)
+const filterBy = ref<'department' | 'tags'>('department')
+const filterValue = ref('')
+const options = computed(() => [...new Set(scenarios.value.flatMap(s => s[filterBy.value]))])
+const visibleScenarios = computed(() => scenarios.value.filter(s =>
+  !filterValue.value || s[filterBy.value].includes(filterValue.value),
+))
 
 onMounted(async () => {
   try {
@@ -30,11 +36,26 @@ onMounted(async () => {
 
     <van-skeleton v-if="loading" :row="6" style="margin: 16px" />
 
-    <router-link v-for="s in scenarios" :key="s.id" :to="`/scenario/${s.id}`" class="card scenario">
+    <div v-if="!loading" class="card">
+      <label>分类方式
+        <select v-model="filterBy" @change="filterValue = ''">
+          <option value="department">业务背景</option>
+          <option value="tags">练习类型</option>
+        </select>
+      </label>
+      <label> 筛选
+        <select v-model="filterValue">
+          <option value="">全部</option>
+          <option v-for="option in options" :key="option" :value="option">{{ option }}</option>
+        </select>
+      </label>
+    </div>
+
+    <router-link v-for="s in visibleScenarios" :key="s.id" :to="`/scenario/${s.id}`" class="card scenario">
       <div class="row">
         <div class="avatar">{{ s.persona.name.slice(0, 1) }}</div>
         <div class="main">
-          <div class="name">{{ s.name }}</div>
+          <div class="name">{{ s.id }} · {{ s.name }}</div>
           <div class="muted">{{ s.persona.name }} · {{ s.persona.role }}</div>
         </div>
         <van-icon name="arrow" color="#c9cdd4" />
@@ -47,7 +68,7 @@ onMounted(async () => {
       </div>
     </router-link>
 
-    <van-empty v-if="!loading && !scenarios.length" description="暂无可用场景" />
+    <van-empty v-if="!loading && !visibleScenarios.length" description="暂无可用场景" />
   </div>
 </template>
 

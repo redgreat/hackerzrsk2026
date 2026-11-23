@@ -260,6 +260,7 @@ class PracticeService:
             **session_summary(sess),
             "persona": {"name": scenario.persona.name, "role": scenario.persona.role} if scenario else None,
             "goal": scenario.goal if scenario else "",
+            "background": scenario.background if scenario else "",
             "opening_tip": scenario.opening.tip if scenario else None,
             "report_ready": sess.report is not None,
             "messages": [
