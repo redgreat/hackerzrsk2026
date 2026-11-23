@@ -35,7 +35,7 @@ def apply_evaluation(
     else:
         status = "ongoing"
     if status != "deal" and after >= r.deal_threshold:
-        # 关键顾虑未化解前，信任值封顶在成交线以下，避免“三句话被说服”
+        # 关键顾虑未化解前，信任值封顶在达标线以下，避免“套一句话就过关”
         after = r.deal_threshold - 1
         delta = after - trust
     return TurnOutcome(trust, after, delta, resolved, remaining, status)

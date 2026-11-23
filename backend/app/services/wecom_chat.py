@@ -22,13 +22,13 @@ from app.services.users import upsert_user
 from app.services.wecom import WeComClient
 
 logger = logging.getLogger(__name__)
-OUTCOME_TEXT = {"deal": "成功推进", "hangup": "客户挂断", "max_turns": "轮数用完", "user_end": "主动结束"}
+OUTCOME_TEXT = {"deal": "目标达成", "hangup": "客户挂断", "max_turns": "轮数用完", "user_end": "主动结束"}
 DEDUP_TTL = 600
 
 HELP_TEXT = (
-    "AI 客户陪练\n"
+    "AI 客户话术陪练\n"
     "· 回复场景编号（如 1 或 S01）开始练习\n"
-    "· 练习中直接发文字或语音和客户对话\n"
+    "· 练习中可发文字或单条短语音和客户对话\n"
     "· 回复「求助」获取一条话术提示\n"
     "· 回复「结束」生成评分报告\n"
     "· 回复「菜单」查看场景列表"
@@ -175,7 +175,7 @@ class WeComChatBot:
             f"客户：{scenario.persona.name}（{scenario.persona.role}）\n"
             f"目标：{scenario.goal}\n\n"
             f"{scenario.persona.name}：{opening}\n\n"
-            "直接回复文字或语音对话；回复「求助」获取提示，回复「结束」生成报告。",
+            "可回复文字或单条短语音对话；连续语音练习请打开 H5。回复「求助」获取提示，回复「结束」生成报告。",
         )
 
     async def _chat(self, user: User, active: PracticeSession, text: str) -> None:

@@ -24,7 +24,7 @@ async def test_customer_opening_and_wait(graph, ctx):
     snap = await graph.aget_state(cfg)
     assert snap.next == ("wait_input",)
     assert snap.values["transcript"][0]["role"] == "customer"
-    assert snap.values["trust"] == 30
+    assert snap.values["trust"] == 20
 
 
 async def test_message_hint_end_flow(graph, ctx, store):
@@ -38,7 +38,7 @@ async def test_message_hint_end_flow(graph, ctx, store):
             Command(
                 resume={
                     "type": "message",
-                    "text": "王经理您好，理解您关注价格，方便说说您主要在对比哪些方面吗？",
+                    "text": "赵女士，非常抱歉让您久等了。方便先说说昨天故障的具体时间和您现在最着急的问题吗？",
                 }
             ),
             cfg,
@@ -50,7 +50,7 @@ async def test_message_hint_end_flow(graph, ctx, store):
 
     snap = await graph.aget_state(cfg)
     v = snap.values
-    assert v["turn"] == 1 and v["trust"] > 30
+    assert v["turn"] == 1 and v["trust"] > 20
     assert [t["role"] for t in v["transcript"]] == ["customer", "user", "customer"]
     assert v["transcript"][1]["inner_thought"]
 
@@ -65,7 +65,7 @@ async def test_message_hint_end_flow(graph, ctx, store):
     report = snap.values["report"]
     assert snap.next == ()
     assert report["outcome"] == "user_end"
-    assert len(report["dimension_scores"]) == 6
+    assert len(report["dimension_scores"]) == 5
     assert 0 < report["total_score"] <= 100
     assert report["highlights"]
     assert (await load_profile(store, "u1"))["practice_count"] == 1
@@ -75,12 +75,12 @@ async def test_user_opens_scenario(graph, ctx):
     cfg = _cfg()
     await _run(graph, ctx, {"session_id": "s", "user_id": "u1", "scenario_id": "S02"}, cfg)
     v = (await graph.aget_state(cfg)).values
-    assert v.get("transcript", []) == []
+    assert v["transcript"][0]["role"] == "customer"
 
 
 async def test_reaching_deal_ends_with_report(graph, ctx):
     cfg = _cfg()
-    await _run(graph, ctx, {"session_id": "s", "user_id": "u2", "scenario_id": "S03"}, cfg)
+    await _run(graph, ctx, {"session_id": "s", "user_id": "u2", "scenario_id": "S01"}, cfg)
     lines = [
         "真的非常抱歉，理解您着急，给您添麻烦了，能说说昨天具体什么情况吗？",
         "我今天安排专人跟进，下午五点前给您回电话说明方案，您看可以吗？",

@@ -107,7 +107,6 @@ async function onPressStart() {
 }
 
 async function onPressEnd() {
-  if (!recorder.recording.value) return
   const result = await recorder.stop()
   if (!result) return showToast('说话时间太短')
   showLoadingToast({ message: '识别中…', duration: 0, forbidClick: true })
@@ -118,6 +117,8 @@ async function onPressEnd() {
     await send(text)
   } catch (e) {
     showFailToast((e as Error).message)
+  } finally {
+    closeToast()
   }
 }
 
@@ -214,8 +215,9 @@ async function endPractice() {
           @touchcancel.prevent="recorder.cancel"
           @mousedown.prevent="onPressStart"
           @mouseup.prevent="onPressEnd"
+          @mouseleave="recorder.cancel"
         >
-          {{ recorder.recording.value ? '松开 发送' : '按住 说话' }}
+          {{ recorder.recording.value ? '松开发送 · 最长60秒' : '按住说话 · 松开发送' }}
         </button>
         <template v-else>
           <van-field

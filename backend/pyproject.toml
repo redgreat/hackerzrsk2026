@@ -1,7 +1,7 @@
 [project]
 name = "ai-sales-coach"
 version = "0.1.0"
-description = "AI 客户陪练：FastAPI + LangGraph + PostgreSQL 的销售/客服话术陪练智能体服务"
+description = "AI 客户话术陪练：FastAPI + LangGraph + PostgreSQL 的通用客户沟通语音陪练服务"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.1",

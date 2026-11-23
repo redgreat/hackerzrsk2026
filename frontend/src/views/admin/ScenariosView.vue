@@ -40,15 +40,15 @@ onMounted(async () => {
           <el-tag v-for="n in s.persona.hidden_needs" :key="n" class="tag" effect="plain">{{ n }}</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="状态阈值" :span="2">
-          初始信任 {{ s.state_rules.initial_trust }} · 成交线 {{ s.state_rules.deal_threshold }} ·
-          挂断线 {{ s.state_rules.hangup_threshold }} · 最少 {{ s.state_rules.min_turns_to_deal }} 轮才可成交
+          初始信任 {{ s.state_rules.initial_trust }} · 达标线 {{ s.state_rules.deal_threshold }} ·
+          挂断线 {{ s.state_rules.hangup_threshold }} · 最少 {{ s.state_rules.min_turns_to_deal }} 轮才可达成目标
         </el-descriptions-item>
       </el-descriptions>
 
-      <div class="sub">异议（关键异议未化解不能成交）</div>
+      <div class="sub">客户顾虑（关键顾虑未化解不能达成目标）</div>
       <el-table :data="s.persona.objections" size="small">
         <el-table-column prop="id" label="ID" width="90" />
-        <el-table-column prop="text" label="异议" min-width="200" />
+        <el-table-column prop="text" label="顾虑" min-width="200" />
         <el-table-column label="关键" width="70">
           <template #default="{ row }"><el-tag :type="row.key ? 'danger' : 'info'" size="small">{{ row.key ? '是' : '否' }}</el-tag></template>
         </el-table-column>

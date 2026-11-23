@@ -25,7 +25,7 @@ onMounted(async () => {
   <div class="page">
     <div class="hero">
       <div class="hello">你好，{{ auth.user?.name || '同学' }}</div>
-      <div class="sub">选一个客户，开口练 3 分钟</div>
+      <div class="sub">选一个客户场景，开口练专业话术</div>
     </div>
 
     <van-skeleton v-if="loading" :row="6" style="margin: 16px" />

@@ -107,8 +107,8 @@ async function devLogin() {
   <div class="login">
     <div class="brand">
       <div class="logo">练</div>
-      <h1>AI 客户陪练</h1>
-      <p class="muted">24 小时在线、不嫌烦、按销冠标准打分的陪练客户</p>
+      <h1>AI 客户话术陪练</h1>
+      <p class="muted">把成熟客服话术变成随时能开口练的 AI 客户</p>
     </div>
 
     <van-loading v-if="loading" class="center" vertical>正在登录…</van-loading>
@@ -161,6 +161,8 @@ async function devLogin() {
                 <van-radio name="催收">催收</van-radio>
                 <van-radio name="销售">销售</van-radio>
                 <van-radio name="客服">客服</van-radio>
+                <van-radio name="服务">服务</van-radio>
+                <van-radio name="销售">销售</van-radio>
               </van-radio-group>
             </template>
           </van-field>

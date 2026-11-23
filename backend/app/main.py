@@ -90,7 +90,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     setup_logging(settings.log_level)
     app = FastAPI(
-        title="AI 客户陪练",
+        title="AI 客户话术陪练",
         version="0.1.0",
         lifespan=lifespan,
         docs_url="/api/docs" if settings.app_env != "prod" else None,

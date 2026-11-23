@@ -2,7 +2,7 @@ import type { Outcome } from '@/types'
 
 export const OUTCOME_LABEL: Record<Outcome, string> = {
   ongoing: '进行中',
-  deal: '成功推进',
+  deal: '目标达成',
   hangup: '客户挂断',
   max_turns: '轮数用完',
   user_end: '主动结束',

@@ -2,14 +2,14 @@ from app.prompts.common import snippets_text, transcript_text
 from app.services.scenarios import Rubric, Scenario
 
 OUTCOME_TEXT = {
-    "deal": "客户同意进入下一步（成功）",
+    "deal": "场景目标达成",
     "hangup": "客户挂断（失败）",
     "max_turns": "达到轮数上限，未达成目标",
     "user_end": "员工主动结束",
     "ongoing": "未结束",
 }
 
-COACH_SYSTEM = """你是一位资深的{rubric_name}教练，按公司销冠标准为员工的一次话术陪练打分并点评。
+COACH_SYSTEM = """你是一位资深的{rubric_name}教练，按公司业务专家确认的标准为员工的一次客户话术陪练打分并点评。
 
 ## 评分维度（每个维度打 1~5 分整数）
 {dimensions}
@@ -27,10 +27,15 @@ COACH_SYSTEM = """你是一位资深的{rubric_name}教练，按公司销冠标�
 4. turn_reviews 选 2~4 个最值得改进的轮次：user_said 摘录员工原话，issue 指出问题，
    better_reply 给出可直接说出口的口语化推荐话术（不超过 80 字）。
 5. 如果员工在某维度没有相关表现，按 1~2 分处理并说明原因。
-6. dimension_scores 必须覆盖全部维度，name 与上面的维度名称完全一致。{red_lines}"""
+6. dimension_scores 必须覆盖全部维度，name 与上面的维度名称完全一致。
+7. 每个评分理由必须依据实际对话，不能把参考话术当作员工说过的话；没有证据时明确说明。
+8. 参考话术只提供表达思路，不能覆盖场景事实和权限边界，不编造赔偿、修复完成时间或公司政策。
+9. 评价转写文本中的表达与业务处理，不推测员工真实音色、语速、音量或情绪。
+10. 客户接受下一步不代表问题已修复；区分处理进度、反馈承诺和最终结果。{red_lines}"""
+
 
 RED_LINES_RULE = """
-7. 合规红线（触犯任一条必须写入 red_line_violations，格式“第N轮：红线原文”，相关合规维度打 1 分；未触犯则为空数组）：
+11. 合规红线（触犯任一条必须写入 red_line_violations，格式“第N轮：红线原文”，相关合规维度打 1 分；未触犯则为空数组）：
 {items}"""
 
 

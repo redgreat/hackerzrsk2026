@@ -6,7 +6,7 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', name: 'login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
-    { path: '/', name: 'home', component: () => import('./views/HomeView.vue'), meta: { tab: true, title: 'AI 客户陪练' } },
+    { path: '/', name: 'home', component: () => import('./views/HomeView.vue'), meta: { tab: true, title: 'AI 客户话术陪练' } },
     { path: '/scenario/:id', name: 'scenario', component: () => import('./views/ScenarioView.vue'), meta: { title: '场景说明' } },
     { path: '/practice/:id', name: 'practice', component: () => import('./views/PracticeView.vue'), meta: { title: '对练中' } },
     { path: '/report/:id', name: 'report', component: () => import('./views/ReportView.vue'), meta: { title: '评分报告' } },
@@ -50,7 +50,7 @@ router.beforeEach(async (to) => {
 })
 
 router.afterEach((to) => {
-  document.title = (to.meta.title as string | undefined) ?? 'AI 客户陪练'
+  document.title = (to.meta.title as string | undefined) ?? 'AI 客户话术陪练'
 })
 
 export default router

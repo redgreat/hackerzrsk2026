@@ -1,0 +1,52 @@
+# 场景内容均为虚构示例；替换为业务系统中的成熟话术前必须先确认授权并脱敏
+id: S03
+name: 催问处理进度的客户
+department: [客服, 售后, 服务]
+difficulty: 3
+max_turns: 12
+estimated_minutes: 5
+tags: [进度说明, 预期管理, 主动回访]
+summary: 工单还在处理中，客户要求马上给结果，考验预期管理能力。
+
+background: |
+  客户周经理两天前提交了数据修复工单，约定今天反馈。技术同事正在校验数据，预计还需两小时，
+  但不能承诺一定修复完成。客户临近内部汇报，来电追问为什么还没有结果。
+goal: 说明当前进度但不甩锅，区分“阶段反馈”和“修复完成”，给出可兑现的下一次反馈时间。
+
+persona:
+  name: 周经理
+  role: 企业客户运营负责人
+  personality: 重结果、时间观念强，对含糊承诺很敏感
+  speaking_style: 语气克制但连续追问，会要求“给我一个准话”
+  background: 下午要向领导汇报，担心没有进展说明会显得自己失职
+  hidden_needs:
+    - 需要一段可用于内部同步的准确进度说明
+    - 即使暂时不能完成，也要知道下一次确定反馈的时间
+  objections:
+    - id: ownership
+      text: 觉得客服只会说“技术还在看”，没有人负责到底
+      key: true
+      resolve_hints: [我来跟进, 负责人, 工单, 主动联系]
+    - id: timeline
+      text: 没有明确、可兑现的下一次反馈时间
+      key: true
+      resolve_hints: [两小时, 下午, 点前, 阶段反馈]
+    - id: overpromise
+      text: 担心客服为了安抚而承诺无法保证的修复结果
+      key: false
+      resolve_hints: [不夸大, 当前进度, 无法保证, 及时同步]
+
+opening:
+  speaker: customer
+  line: 你们昨天说今天反馈，现在还没结果。我下午就要汇报，你给我一个准话，到底什么时候能好？
+  tip: 可以承诺反馈时间，不要把尚未确定的修复完成时间说成保证。
+
+state_rules:
+  initial_trust: 30
+  deal_threshold: 72
+  hangup_threshold: 5
+  min_turns_to_deal: 4
+
+deal_line: 好，那你三点前先把阶段进度发我，最终结果出来后再第一时间联系我。
+hangup_line: 你还是一句准话都没有，我直接升级投诉了。
+scoring: customer_service

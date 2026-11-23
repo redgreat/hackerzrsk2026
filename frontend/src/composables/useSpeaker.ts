@@ -6,6 +6,8 @@ export function useSpeaker() {
   const enabled = ref(localStorage.getItem('coach_voice') !== 'off')
   const serverTts = ref(false)
   let audio: HTMLAudioElement | null = null
+  let generation = 0
+  let objectUrl: string | null = null
 
   api
     .speechConfig()
@@ -13,19 +15,25 @@ export function useSpeaker() {
     .catch(() => {})
 
   function stop() {
+    generation++
     audio?.pause()
     audio = null
+    if (objectUrl) URL.revokeObjectURL(objectUrl)
+    objectUrl = null
     if ('speechSynthesis' in window) window.speechSynthesis.cancel()
   }
 
   async function speak(text: string, sessionId?: string) {
     if (!enabled.value || !text) return
     stop()
+    const ticket = generation
     if (serverTts.value) {
       try {
         const blob = await api.tts(text, sessionId)
+        if (ticket !== generation) return
         if (blob.size) {
-          audio = new Audio(URL.createObjectURL(blob))
+          objectUrl = URL.createObjectURL(blob)
+          audio = new Audio(objectUrl)
           await audio.play()
           return
         }
@@ -33,6 +41,7 @@ export function useSpeaker() {
         /* 退化为浏览器朗读 */
       }
     }
+    if (ticket !== generation) return
     if ('speechSynthesis' in window) {
       const u = new SpeechSynthesisUtterance(text)
       u.lang = 'zh-CN'

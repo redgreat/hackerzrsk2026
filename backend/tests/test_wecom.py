@@ -12,7 +12,7 @@ CORP = "wwtestcorp"
 
 
 def test_crypto_roundtrip_and_signature():
-    xml = "<xml><Content>你好，报价能不能便宜点</Content></xml>"
+    xml = "<xml><Content>你好，请问什么时候能处理好</Content></xml>"
     enc = crypto.encrypt(KEY, xml, CORP)
     assert crypto.decrypt(KEY, enc, CORP) == xml
     sig = crypto._sha1("tok", "123", "abc", enc)
@@ -37,8 +37,8 @@ def test_parse_incoming_text_voice_enter():
     text = "<xml><MsgType>text</MsgType><FromUserName>zs</FromUserName><MsgId>9</MsgId><Content> 1 </Content></xml>"
     m = parse_incoming(text)
     assert (m.kind, m.userid, m.content, m.msg_id) == ("text", "zs", "1", "9")
-    voice = "<xml><MsgType>voice</MsgType><FromUserName>zs</FromUserName><Recognition>我想了解价格</Recognition></xml>"
-    assert parse_incoming(voice).content == "我想了解价格"
+    voice = "<xml><MsgType>voice</MsgType><FromUserName>zs</FromUserName><Recognition>我想了解处理进度</Recognition></xml>"
+    assert parse_incoming(voice).content == "我想了解处理进度"
     assert parse_incoming("<xml><MsgType>voice</MsgType><FromUserName>zs</FromUserName></xml>").content == ""
     enter = "<xml><MsgType>event</MsgType><Event>enter_agent</Event><FromUserName>zs</FromUserName></xml>"
     assert parse_incoming(enter).kind == "enter"
@@ -62,7 +62,7 @@ IDS = ["S01", "S02", "S03"]
         ("求助", True, ("hint", None)),
         ("求助", False, ("help", None)),
         ("结束", True, ("end", None)),
-        ("你好，报价能便宜吗", True, ("message", "你好，报价能便宜吗")),
+        ("你好，什么时候能处理好", True, ("message", "你好，什么时候能处理好")),
     ],
 )
 def test_parse_command(text, ongoing, expected):
@@ -70,7 +70,7 @@ def test_parse_command(text, ongoing, expected):
 
 
 def test_split_text_respects_bytes():
-    text = "价格异议" * 800
+    text = "客户服务" * 800
     chunks = split_text(text, 2000)
     assert "".join(chunks) == text
     assert all(len(c.encode("utf-8")) <= 2000 for c in chunks)

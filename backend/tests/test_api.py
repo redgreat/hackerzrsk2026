@@ -75,7 +75,7 @@ async def client(api_settings: Settings, prepared_db):
 
 
 async def _login(client, userid: str) -> dict:
-    r = await client.post("/api/auth/dev", json={"userid": userid, "name": "测试员", "department": "销售"})
+    r = await client.post("/api/auth/dev", json={"userid": userid, "name": "测试员", "department": "客服"})
     assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
@@ -96,7 +96,7 @@ async def test_full_practice_flow(client):
     h = await _login(client, "T001")
 
     cards = (await client.get("/api/scenarios", headers=h)).json()
-    assert cards[0]["department"] == ["销售"]
+    assert cards[0]["department"] == ["客服", "服务"]
     detail = (await client.get("/api/scenarios/S01", headers=h)).json()
     assert "objections" not in json.dumps(detail) and "hidden_needs" not in json.dumps(detail)
 
@@ -105,7 +105,12 @@ async def test_full_practice_flow(client):
     assert s["messages"][0]["role"] == "customer"
     assert "inner_thought" not in s["messages"][0]
 
-    events = await _send(client, h, sid, "王经理您好，理解您关注价格，方便说说您主要在对比哪些方面吗？")
+    events = await _send(
+        client,
+        h,
+        sid,
+        "赵女士，非常抱歉让您久等了。我先确认一下昨天故障的时间和您现在最着急解决的问题，可以吗？",
+    )
     assert any(e["type"] == "token" for e in events)
     assert events[-1] == {"type": "done", "status": "ongoing", "turn": 1}
 
@@ -137,7 +142,7 @@ async def test_full_practice_flow(client):
 
     assert len((await client.get("/api/sessions", headers=h)).json()) == 1
     me = (await client.get("/api/stats/me", headers=h)).json()
-    assert me["practice_count"] == 1 and len(me["dimension_avg"]) == 6
+    assert me["practice_count"] == 1 and len(me["dimension_avg"]) == 5
     assert (await client.get("/api/admin/overview", headers=other)).status_code == 403
     ov = (await client.get("/api/admin/overview", headers=h)).json()
     assert ov["finished_sessions"] == 1
@@ -193,17 +198,22 @@ async def test_wecom_callback_chat_flow(client, monkeypatch):
 
     path, body = _wecom_envelope(_msg("W100", "text", "1", "m1"))
     assert (await client.post(path, content=body)).text == "success"
-    assert "【嫌贵比价的客户】" in sent[-1][1] and "王经理" in sent[-1][1]
+    assert "【情绪激动的投诉客户】" in sent[-1][1] and "赵女士" in sent[-1][1]
 
     path, body = _wecom_envelope(_msg("W100", "text", "1", "m1"))  # 重复投递应去重
     await client.post(path, content=body)
-    assert sum("【嫌贵比价的客户】" in t for _, t in sent) == 1
+    assert sum("【情绪激动的投诉客户】" in t for _, t in sent) == 1
 
     path, body = _wecom_envelope(
-        _msg("W100", "text", "王经理您好，理解您关注价格，方便说说您主要在对比哪些方面吗？", "m2")
+        _msg(
+            "W100",
+            "text",
+            "赵女士，非常抱歉让您久等了。我先确认故障时间和您现在最着急解决的问题，可以吗？",
+            "m2",
+        )
     )
     await client.post(path, content=body)
-    assert sent[-1][1].startswith("王经理：")
+    assert sent[-1][1].startswith("赵女士：")
 
     path, body = _wecom_envelope(_msg("W100", "voice", "求助", "m3"))
     await client.post(path, content=body)

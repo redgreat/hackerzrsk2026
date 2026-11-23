@@ -4,7 +4,7 @@
 
 ## 项目一句话
 
-**AI 客户陪练**：在企业微信里打开即用的销售/客服话术陪练工具——AI 扮演"难缠客户"与员工对练，练完由 AI 教练打分、点评并给出优秀话术示范，用于降低新人带教成本、提升一线沟通能力。
+**AI 客户话术陪练**：面向客服、服务、销售等客户沟通岗位的语音陪练工具——以公司已采购并授权使用的成熟话术为经验参考，AI 扮演带情绪和诉求的客户与员工对练，练完由 AI 教练按业务标准打分、点评并给出优秀话术示范。主体验是企业微信工作台内打开的 H5 语音对练；企微应用消息仅作为入口、提醒和短语音/文字补充通道。
 
 参赛背景：中瑞数科《"AI赋能·人人会用"比赛活动通知》（NO. C-HR-2026/11/01），初赛作品截止 **2026-11-25 24:00**。
 
@@ -64,7 +64,7 @@ hackerzr2026/
 ## 关键实现约定
 
 - 陪练图流程：`init_scenario → wait_input(interrupt) → evaluate_turn → customer_reply → check_end`，旁路 `hint`，结束进入 `coach_report`。员工的输入通过 `Command(resume={"type": "message"|"hint"|"end"})` 传入。
-- 信任值上下限、成交/挂断判定、总分计算都在 `graph/rules.py`，属于纯函数，修改后同步更新 `tests/test_rules.py`。
+- 信任值上下限、目标达成/挂断判定、总分计算都在 `graph/rules.py`，属于纯函数，修改后同步更新 `tests/test_rules.py`。
 - 所有模型调用必须走 `services/llm/gateway.py`（脱敏、结构化输出重试、token/费用计量）；不得在节点里直接实例化 ChatOpenAI。
 - 计量记录写入 `usage_scope()`，由 `PracticeService` 统一落库 `model_usage` 并累加到会话成本；不记录对话内容。
 - 客户回复的流式片段通过 `runtime.stream_writer` 推送，再经 SSE 下发。图运行放在后台任务中，客户端断开不会中断报告生成。会话锁目前是单进程实现，多实例部署时需改为分布式锁。
@@ -122,5 +122,6 @@ pnpm build                                     # vue-tsc 类型检查 + 构建�
 
 企业微信与管理后台：
 - 应用对话：`app/api/wecom.py`（回调）→ `app/services/wecom_chat.py`（指令与会话编排，复用 `PracticeService`）→ `app/services/wecom.py`（发送）。回调必须快速应答，耗时逻辑放后台任务。
+- H5 是完整语音陪练主入口；企微应用对话只适合离散的短语音/文字消息，不把它描述成实时连续通话。
 - 管理后台 API：`app/api/admin.py` → `app/services/admin.py`，只读，统一 `AdminDep`。前端在 `frontend/src/views/admin/`，使用 Element Plus（H5 仍用 Vant）。
 - 新增对话指令时同步 `parse_command` 与 `tests/test_wecom.py`。

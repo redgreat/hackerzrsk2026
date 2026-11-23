@@ -27,7 +27,7 @@ const cards = computed(() => {
     { label: '完成练习', value: o.finished_sessions },
     { label: '参与员工', value: o.users },
     { label: '平均分', value: o.avg_score ?? '-' },
-    { label: '成功推进率', value: pct(o.deal_rate) },
+    { label: '目标达成率', value: pct(o.deal_rate) },
     { label: '平均单次成本', value: `¥${o.avg_cost_yuan.toFixed(3)}` },
     { label: '相比人工带教节省', value: pct(o.cost_saving_ratio) },
   ]

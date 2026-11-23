@@ -32,7 +32,7 @@ class StateRules(BaseModel):
     initial_trust: int = Field(30, ge=0, le=100)
     deal_threshold: int = Field(75, ge=0, le=100)
     hangup_threshold: int = Field(5, ge=0, le=100)
-    # 最少对话轮数后才允许成交，避免"三句话被说服"
+    # 最少对话轮数后才允许目标达成，避免“套一句话就过关”
     min_turns_to_deal: int = 4
     max_gain_per_turn: int = 15
     max_loss_per_turn: int = 25

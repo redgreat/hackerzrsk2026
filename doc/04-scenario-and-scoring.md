@@ -3,50 +3,49 @@
 ## 1. 设计原则
 
 - 场景 = 客户画像 + 隐藏状态 + 结束规则 + 评分表，全部 YAML 配置。
-- 业务人员（销冠、培训负责人）可以不写代码直接新增/修改场景。
-- 评分标准由业务专家共同制定，保证"按销冠标准打分"的可信度。
+- 业务专家、培训负责人可以不写代码直接新增/修改场景。
+- 评分标准由对应业务专家共同制定，避免用一套销售标准评价所有客户沟通岗位。
 
 ## 2. 场景 YAML 规范（草案）
 
 ```yaml
 id: S01
-name: 嫌贵比价的客户
-department: [销售]
+name: 情绪激动的投诉客户
+department: [客服, 服务]
 difficulty: 2            # 1~5
 max_turns: 15
 estimated_minutes: 5
 
 background: |
-  （给员工看的场景说明）客户是某公司采购负责人，已经了解过我们的产品，
-  同时也在对比两家竞品，认为我们报价偏高。
-goal: 让客户同意进入下一步商务洽谈。
+  （给员工看的场景说明）客户因系统故障影响营业，第一次报障后没有收到反馈，
+  再次来电时情绪激动。
+goal: 安抚情绪，确认诉求，给出明确处理节点并约定回访。
 
 persona:
-  name: 王经理
-  role: 采购负责人
-  personality: 精明、直接、语速快，不喜欢被推销
-  speaking_style: 说话简短，爱打断，常用"说重点"
-  budget: 低于我方报价约 15%
+  name: 赵女士
+  role: 门店店长
+  personality: 性子急、情绪激动，但讲道理
+  speaking_style: 语速快，最反感推诿和打官腔
   hidden_needs:            # 客户真实关心但不会主动说的
-    - 上线后的售后响应速度
-    - 能否分期付款
+    - 被重视、被道歉
+    - 得到明确回复时间
   objections:              # 隐藏异议，被有效化解才会移除
-    - id: price
-      text: 比竞品贵
-      key: true            # 关键异议，未化解不能成交
-    - id: risk
-      text: 担心实施周期太长影响业务
-      key: false
+    - id: emotion
+      text: 觉得被敷衍
+      key: true            # 关键顾虑，未化解不能达成目标
+    - id: solution
+      text: 没有明确处理方案和时间
+      key: true
 
 state_rules:
   initial_trust: 30
   deal_threshold: 75
   hangup_threshold: 5
 
-scoring: sales_default     # 引用评分表 id
+scoring: service_complaint # 引用评分表 id
 ```
 
-> 已落地的完整字段以 `backend/app/services/scenarios.py` 为准，示例见 `scenarios/S01_price_objection.yaml`。
+> 已落地的完整字段以 `backend/app/services/scenarios.py` 为准，示例见 `scenarios/S01_angry_complaint.yaml`。
 > 相比上面的草案，新增了这些字段：`summary`、`tags`、`opening`（谁先开口、开场白、给员工的提示）、
 > `objections[].resolve_hints`（化解要点，供评估参考）、`state_rules.min_turns_to_deal / max_gain_per_turn / max_loss_per_turn`、
 > `deal_line / hangup_line`（结束时的参考台词）、`enabled`。评分表放在 `scenarios/rubrics/*.yaml`，可配置 `hint_penalty` 和 `hint_penalty_max`。
@@ -65,16 +64,16 @@ scoring: sales_default     # 引用评分表 id
 
 ## 4. 评分表（草案）
 
-### 4.1 销售通用评分表 `sales_default`（满分 100）
+### 4.1 客户服务评分表 `customer_service`（满分 100）
 
 | 维度 | 权重 | 5 分标准 | 1 分标准 |
 |---|---|---|---|
-| 开场与建立信任 | 15 | 礼貌、简洁、快速说明价值 | 冗长或生硬推销 |
-| 需求挖掘 | 25 | 开放式提问，挖出隐藏需求 | 不提问，自说自话 |
-| 异议处理 | 25 | 认同—澄清—回应—确认 | 争辩或回避 |
-| 价值塑造 | 20 | 结合客户需求讲价值而非参数 | 只讲功能、只降价 |
-| 推进与促成 | 10 | 明确提出下一步 | 无推进动作 |
-| 合规与礼仪 | 5 | 无违规承诺，用语规范 | 违规承诺、不礼貌 |
+| 开场与服务意识 | 15 | 礼貌、主动承担，让客户感到被认真对待 | 机械问候或推诿 |
+| 倾听与需求澄清 | 25 | 问清场景、现象和诉求并复述确认 | 没问清楚就猜测 |
+| 解答与方案准确性 | 25 | 回答针对、步骤清楚、不编造 | 答非所问或越权承诺 |
+| 情绪与预期管理 | 15 | 识别情绪，给出可兑现时间节点 | 争辩或只说“尽快” |
+| 表达与合规 | 10 | 口语通俗、保护信息、遵守权限 | 堆术语或违规承诺 |
+| 结束与闭环 | 10 | 确认理解，复述下一步与回访 | 草草结束 |
 
 扣分项：每次使用求助提示扣 2 分（最多扣 10 分）。
 
@@ -107,6 +106,6 @@ scoring: sales_default     # 引用评分表 id
 
 ## 6. 待业务确认
 
-- 首批场景对应的真实产品、价格区间、常见异议（脱敏后）
-- 评分维度与权重是否符合公司销售方法论
-- 是否有现成的销冠话术 / 培训材料可作为参考话术库
+- 业务系统成熟话术的授权范围、导出方式、转写质量和更新频率
+- 首批客服场景的真实流程、权限边界和常见客户表达（脱敏后）
+- 评分维度与权重是否符合公司客服质量标准

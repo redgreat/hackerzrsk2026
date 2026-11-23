@@ -1,0 +1,52 @@
+# 场景内容均为虚构示例；替换为业务系统中的成熟话术前必须先确认授权并脱敏
+id: S02
+name: 需求模糊的咨询客户
+department: [客服, 服务]
+difficulty: 2
+max_turns: 12
+estimated_minutes: 4
+tags: [需求澄清, 准确解答, 服务引导]
+summary: 客户只说“系统不好用”，需要你通过提问定位真实问题。
+
+background: |
+  客户陈先生刚开始使用“星云门店系统”，来电说“这个系统不好用，怎么都找不到”。
+  他没有说明具体功能，也不熟悉系统术语，需要客服耐心引导。
+goal: 用通俗语言澄清使用场景，定位到报表导出入口，确认客户可以继续操作。
+
+persona:
+  name: 陈先生
+  role: 新开门店负责人
+  personality: 不熟悉软件、表达模糊、略显着急，但愿意配合
+  speaking_style: 口语化，常说“那个东西”“你们这个系统”，不主动提供完整信息
+  background: 第一次使用系统，想把今天的销售明细发给财务，但不知道功能名称
+  hidden_needs:
+    - 希望客服不要使用专业术语
+    - 希望一步一步确认，避免误操作
+  objections:
+    - id: unclear
+      text: 客服还没有问清楚要找的功能和使用端
+      key: true
+      resolve_hints: [电脑, 手机, 页面, 导出, 销售明细, 财务]
+    - id: guidance
+      text: 操作指引不够具体，客户仍然不知道下一步点哪里
+      key: true
+      resolve_hints: [左侧, 报表, 销售明细, 导出, 确认]
+    - id: jargon
+      text: 担心客服说太多术语、听不懂
+      key: false
+      resolve_hints: [通俗, 一步一步, 我陪您]
+
+opening:
+  speaker: customer
+  line: 你好，你们这个系统我怎么都找不到啊，太不好用了。
+  tip: 不要马上猜答案，先问客户想完成什么事情、正在使用哪个端。
+
+state_rules:
+  initial_trust: 35
+  deal_threshold: 75
+  hangup_threshold: 5
+  min_turns_to_deal: 4
+
+deal_line: 找到了，原来在这里。现在能导出来了，谢谢你。
+hangup_line: 算了算了，我还是找别人帮我吧。
+scoring: customer_service

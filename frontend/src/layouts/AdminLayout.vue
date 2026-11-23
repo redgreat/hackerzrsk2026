@@ -32,7 +32,7 @@ function logout() {
 <template>
   <el-container class="admin">
     <el-aside width="200px" class="aside">
-      <div class="brand">AI 客户陪练<span>管理后台</span></div>
+      <div class="brand">AI 客户话术陪练<span>管理后台</span></div>
       <el-menu :default-active="active" router background-color="#001529" text-color="#c0c4cc" active-text-color="#fff">
         <el-menu-item v-for="m in menus" :key="m.path" :index="m.path">{{ m.label }}</el-menu-item>
       </el-menu>

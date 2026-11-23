@@ -11,14 +11,44 @@ export function useRecorder(maxMs = 60_000) {
   let chunks: Blob[] = []
   let startedAt = 0
   let timer: number | undefined
+  let generation = 0
+  let pending = false
+  let result: Promise<{ blob: Blob; durationMs: number } | null> | null = null
 
   async function start() {
-    if (!supported || recording.value) return
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    if (!supported || recording.value || pending) return
+    const ticket = ++generation
+    pending = true
+    let acquired: MediaStream
+    try {
+      acquired = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } finally {
+      if (ticket === generation) pending = false
+    }
+    if (ticket !== generation) {
+      acquired.getTracks().forEach((t) => t.stop())
+      return
+    }
+    stream = acquired
     const mimeType = MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m))
-    recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+    try {
+      recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+    } catch (error) {
+      release()
+      throw error
+    }
     chunks = []
     recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data)
+    const current = recorder
+    result = new Promise((resolve) => {
+      current.onstop = () => {
+        const durationMs = Math.min(performance.now() - startedAt, maxMs)
+        const blob = new Blob(chunks, { type: current.mimeType || 'audio/webm' })
+        release()
+        resolve(durationMs < 600 || !blob.size ? null : { blob, durationMs })
+      }
+      current.onerror = () => { release(); resolve(null) }
+    })
     recorder.start()
     startedAt = performance.now()
     recording.value = true
@@ -33,22 +63,17 @@ export function useRecorder(maxMs = 60_000) {
   }
 
   function stop(): Promise<{ blob: Blob; durationMs: number } | null> {
-    return new Promise((resolve) => {
-      if (!recorder || recorder.state === 'inactive') {
-        release()
-        return resolve(null)
-      }
-      const durationMs = performance.now() - startedAt
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' })
-        release()
-        resolve(durationMs < 600 ? null : { blob, durationMs })
-      }
-      recorder.stop()
-    })
+    if (pending) cancel()
+    const completed = result
+    result = null
+    if (recorder?.state === 'recording') recorder.stop()
+    return completed ?? Promise.resolve(null)
   }
 
   function cancel() {
+    generation++
+    pending = false
+    result = null
     if (recorder && recorder.state !== 'inactive') {
       recorder.onstop = null
       recorder.stop()

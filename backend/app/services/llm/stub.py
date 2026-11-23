@@ -14,7 +14,7 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 
 GOOD_QUESTION = re.compile(r"[?？]|哪些|怎么|什么|如何|是否|能不能|方便.*说")
 EMPATHY = re.compile(r"理解|明白|抱歉|不好意思|确实|您说得对|辛苦")
-PUSHY = re.compile(r"最低价|马上签|今天必须|打折|便宜点|别家.*(差|垃圾)")
+PUSHY = re.compile(r"马上|今天必须|你自己|不归我管|别再问|爱用不用")
 VIOLATION = re.compile(r"保证|绝对|百分百|100%|肯定没问题")
 # 催收红线（威胁恐吓、辱骂、冒充公检法、向第三方施压等）
 RED_LINE = re.compile(
@@ -31,19 +31,19 @@ def _estimate_tokens(text: str) -> int:
 
 
 def _stub_customer(system: str) -> str:
-    if "【本轮结局：成交】" in system:
-        return "嗯，你说的这些我基本认可。行，那你安排一下，下周我们约个时间详细聊方案。"
+    if "【本轮结局：目标达成】" in system:
+        return "好，那就按你说的时间处理，到时请你主动联系我。"
     if "【本轮结局：挂断】" in system:
         return "算了算了，我没时间听这些，先这样吧。"
     m = re.search(r"当前信任值：(\d+)", system)
     trust = int(m.group(1)) if m else 30
     if trust < 25:
-        return "你们这个价格确实比别家高不少，说重点，凭什么贵？"
+        return "我已经等很久了，你们到底有没有人在认真处理？"
     if trust < 45:
-        return "嗯……你说的有点道理，但我还是担心上线以后的问题，你们怎么保证？"
+        return "我不想再听‘尽快’，你能不能把现在的进度说清楚？"
     if trust < 65:
-        return "这个思路可以。那售后响应一般多久？出了问题谁来负责？"
-    return "听起来还不错，付款方式上有没有灵活一点的方案？"
+        return "这样说清楚多了。那下一次具体什么时候给我反馈？"
+    return "可以，那你再帮我确认一下接下来由谁跟进、我需要做什么。"
 
 
 def _stub_evaluator(system: str, user: str) -> dict:
@@ -58,7 +58,7 @@ def _stub_evaluator(system: str, user: str) -> dict:
         behaviors.append("共情认同")
     if PUSHY.search(said):
         delta -= 10
-        behaviors.append("急于压单/降价")
+        behaviors.append("催促或推诿")
     if VIOLATION.search(said):
         delta -= 15
         behaviors.append("违规承诺")
@@ -101,18 +101,18 @@ def _stub_coach(system: str, user: str) -> dict:
             "turn": int(t),
             "user_said": s.strip()[:80],
             "issue": "可以先确认客户关注点，再给出针对性回应。",
-            "better_reply": "我理解您对价格的顾虑，方便说说您最看重的是哪几个方面吗？我针对性地给您算笔账。",
+            "better_reply": "我理解您现在很着急。我先把您的诉求和当前进度确认清楚，再给您一个可以兑现的下一次反馈时间。",
         }
         for t, s in turns[:2]
     ]
     return {
-        "summary": "整体表现稳定，提问意识不错，价值塑造还可以更贴近客户需求。",
+        "summary": "整体表现稳定，能主动确认问题，方案和回访节点还可以更具体。",
         "dimension_scores": [
             {"name": d, "score": 4 if i % 2 == 0 else 3, "comment": f"{d}表现中规中矩。"}
             for i, d in enumerate(dims)
         ],
-        "highlights": ["能主动向客户提问，了解对方关注点"],
-        "improvements": ["回应异议时先认同再澄清，避免直接反驳", "结尾明确提出下一步行动"],
+        "highlights": ["能主动向客户提问，确认对方真正诉求"],
+        "improvements": ["先共情再澄清，避免机械套话", "结尾确认负责人、动作和时间"],
         "turn_reviews": reviews,
     }
 
@@ -162,7 +162,7 @@ def _stub_analyst(system: str, user: str) -> dict:
 
 
 def _stub_hint() -> str:
-    return "先认同客户的顾虑，再用开放式问题挖掘他最在意的点，例如：“您最担心的是哪方面？”"
+    return "先接住客户情绪，再用一个具体问题澄清诉求，例如：“我理解您很着急，您现在最需要我先确认进度，还是先给出临时处理办法？”"
 
 
 class StubChatModel(BaseChatModel):

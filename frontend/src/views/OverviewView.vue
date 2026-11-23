@@ -37,7 +37,7 @@ const pct = (v: number | null) => (v == null ? '-' : `${(v * 100).toFixed(1)}%`)
         <van-grid-item :text="'完成练习'"><b>{{ data.finished_sessions }}</b></van-grid-item>
         <van-grid-item :text="'参与人数'"><b>{{ data.users }}</b></van-grid-item>
         <van-grid-item :text="'平均分'"><b>{{ data.avg_score ?? '-' }}</b></van-grid-item>
-        <van-grid-item :text="'成功推进率'"><b>{{ pct(data.deal_rate) }}</b></van-grid-item>
+        <van-grid-item :text="'目标达成率'"><b>{{ pct(data.deal_rate) }}</b></van-grid-item>
         <van-grid-item :text="'平均轮数'"><b>{{ data.avg_turns ?? '-' }}</b></van-grid-item>
         <van-grid-item :text="'平均时长'">
           <b>{{ data.avg_duration_seconds ? `${Math.round(data.avg_duration_seconds / 60)}分` : '-' }}</b>
