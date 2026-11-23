@@ -82,6 +82,9 @@ export const api = {
   submitExam: (id: string) => post<AttemptDetail>(`/exams/attempts/${id}/submit`),
 
   admin: {
+    knowledgeEvents: (q: Query) => get<Paged<import('@/types').KnowledgeEventCard>>(`/admin/knowledge-events?${qs(q)}`),
+    knowledgeEvent: (id: number) => get<import('@/types').KnowledgeEventDetail>(`/admin/knowledge-events/${id}`),
+    reviewKnowledgeEvent: (id: number, body: import('@/types').KnowledgeReviewIn) => post<import('@/types').KnowledgeEventDetail>(`/admin/knowledge-events/${id}/review`, body),
     overview: () => get<Overview>('/admin/overview'),
     trend: (days: number) => get<TrendPoint[]>(`/admin/trend?days=${days}`),
     users: (q: Query) => get<Paged<AdminUser>>(`/admin/users?${qs(q)}`),

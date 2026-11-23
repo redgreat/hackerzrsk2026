@@ -402,3 +402,27 @@ export interface AttemptDetail extends AttemptSummary {
 export interface AdminAttempt extends AttemptSummary {
   user: { id: number; userid: string; name: string; department: string }
 }
+
+
+export interface KnowledgeReviewData {
+  title: string
+  labels: { customer_problem: string; stage: string; agent_actions: string[]; observed_result: string }
+  summary: string
+  applicability_limits: string[]
+}
+export interface KnowledgeEventCard {
+  id: number; title: string; event_key: string; source_key: string
+  status: string; revision: number; segment_start: number; segment_end: number
+}
+export interface KnowledgeEventDetail extends KnowledgeEventCard {
+  data: KnowledgeReviewData; original: KnowledgeReviewData
+  evidence_seqs: number[]
+  segments: { seq: number; channel: number; start_raw: number; end_raw: number; text: string }[]
+  speaker_mapping: Record<string, string>; speaker_mapping_status: string
+  privacy_status: string; time_unit: string; policy_verification: string; candidate_use: string
+  history: { revision: number; action: string; user_id: number; at: string; note: string; data: KnowledgeReviewData }[]
+  retrieval_enabled: boolean
+}
+export interface KnowledgeReviewIn {
+  expected_revision: number; action: 'save' | 'approve' | 'reject'; data: KnowledgeReviewData; note: string
+}

@@ -21,6 +21,7 @@ const menus = [
   { path: '/admin/usage', label: '模型用量' },
   { path: '/admin/scenarios', label: '场景配置' },
   { path: '/admin/knowledge', label: '话术知识库' },
+  { path: '/admin/knowledge-events', label: '知识案例' },
 ]
 
 function logout() {

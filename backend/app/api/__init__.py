@@ -5,6 +5,7 @@ from app.api import (
     admin,
     auth,
     exams,
+    knowledge_events,
     recordings,
     scenarios,
     sessions,
@@ -28,6 +29,7 @@ for module in (
     accounts,
     recordings,
     exams,
+    knowledge_events,
     training_admin,
 ):
     api_router.include_router(module.router)

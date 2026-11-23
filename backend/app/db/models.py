@@ -241,3 +241,6 @@ class KnowledgeEvent(TimestampMixin, Base):
     review_status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM))
     embedding_model: Mapped[str | None] = mapped_column(String(128))
+    review_data: Mapped[dict | None] = mapped_column(JSONB, comment="人工修订，与原始提取结果分开")
+    review_history: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    review_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
