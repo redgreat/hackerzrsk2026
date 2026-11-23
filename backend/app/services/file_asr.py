@@ -136,7 +136,7 @@ class FileASR:
     async def transcribe(self, url: str, task_id: str | None = None, on_submitted=None) -> dict:
         """返回 Paraformer 识别结果 JSON；task_id 不为空时续查已提交的任务。"""
         if not self.enabled:
-            raise FeatureDisabled("录音转写未开启（RECORDINGS__ASR_PROVIDER）")
+            raise FeatureDisabled("录音转写未开启（请在 config.yml 的 recordings.asr_provider 中配置）")
         started = time.perf_counter()
         if self.cfg.asr_provider == "stub":
             result = stub_result(url)

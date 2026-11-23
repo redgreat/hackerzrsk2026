@@ -20,4 +20,7 @@ def test_coerce_validates_types_and_ranges():
 
 def test_whitelist_excludes_secrets():
     keys = set(ss.BY_KEY)
-    assert not any(k.startswith(("database_url", "jwt", "wecom", "llm.api_key", "admin_userids", "recordings")) for k in keys)
+    assert not any(
+        k.startswith(("database_url", "jwt", "wecom", "llm.api_key", "admin_userids", "recordings"))
+        for k in keys
+    )
