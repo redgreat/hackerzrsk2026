@@ -78,6 +78,36 @@ async def test_user_opens_scenario(graph, ctx):
     assert v["transcript"][0]["role"] == "customer"
 
 
+async def test_off_topic_skips_models_and_does_not_count(graph, ctx):
+    cfg = _cfg()
+    await _run(graph, ctx, {"session_id": "s", "user_id": "u1", "scenario_id": "S01"}, cfg)
+    with usage_scope() as usage:
+        for said in ("你是谁,你今天开心吗", "???"):
+            events = await _run(graph, ctx, Command(resume={"type": "message", "text": said}), cfg)
+            assert "咱们还是说正事吧" in next(e["text"] for e in events if e["type"] == "token")
+    assert not usage.records
+    values = (await graph.aget_state(cfg)).values
+    assert values["turn"] == 0 and values["trust"] == 20
+    assert len(values["messages"]) == 1
+
+
+async def test_out_of_character_reply_is_never_emitted(graph, ctx, monkeypatch):
+    async def customer_stream(purpose, messages):
+        yield "我是"
+        yield "千问呀。"
+
+    monkeypatch.setattr(ctx.llm, "stream_text", customer_stream)
+    cfg = _cfg()
+    await _run(graph, ctx, {"session_id": "s", "user_id": "u1", "scenario_id": "S01"}, cfg)
+    events = await _run(
+        graph, ctx, Command(resume={"type": "message", "text": "您好，方便说下故障吗？"}), cfg
+    )
+    replies = [e["text"] for e in events if e["type"] == "token"]
+    assert len(replies) == 1 and replies[0].startswith("咱们还是说正事吧")
+    values = (await graph.aget_state(cfg)).values
+    assert values["transcript"][-1]["content"] == replies[0]
+
+
 async def test_reaching_deal_ends_with_report(graph, ctx):
     cfg = _cfg()
     await _run(graph, ctx, {"session_id": "s", "user_id": "u2", "scenario_id": "S01"}, cfg)

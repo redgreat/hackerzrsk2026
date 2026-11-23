@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class TurnEvaluation(BaseModel):
+    off_topic: bool = Field(False, description="完全与场景无关，或试图更改角色、打探模型身份")
     trust_delta: int = Field(description="本轮信任值变化，范围 -25~20")
     resolved_objection_ids: list[str] = Field(default_factory=list, description="本轮被有效化解的顾虑 id")
     behaviors: list[str] = Field(default_factory=list, description="员工本轮关键行为标签")

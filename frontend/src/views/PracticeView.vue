@@ -4,7 +4,7 @@ import { useRecorder } from '@/composables/useRecorder'
 import { useSpeaker } from '@/composables/useSpeaker'
 import type { Message, SessionDetail } from '@/types'
 import { closeToast, showConfirmDialog, showFailToast, showLoadingToast, showToast } from 'vant'
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
@@ -24,7 +24,7 @@ const listEl = ref<HTMLElement | null>(null)
 
 const recorder = useRecorder()
 const speaker = useSpeaker()
-const turn = computed(() => messages.value.filter((m) => m.role === 'user').length)
+const turn = ref(0)
 
 async function scrollBottom() {
   await nextTick()
@@ -45,6 +45,7 @@ onMounted(async () => {
     }
     session.value = s
     messages.value = s.messages
+    turn.value = s.turns
     asrEnabled.value = sc.asr_enabled && recorder.supported
     voiceMode.value = asrEnabled.value
     scrollBottom()
@@ -73,6 +74,9 @@ async function send(text: string) {
       } else if (ev.type === 'error') {
         showFailToast(ev.message)
       } else if (ev.type === 'done') {
+        turn.value = ev.turn
+        const last = messages.value.at(-1)
+        if (last?.role === 'user') last.turn = ev.turn
         finished = ev.status !== 'ongoing'
       }
     })

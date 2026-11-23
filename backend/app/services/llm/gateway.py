@@ -61,6 +61,7 @@ class LLMGateway:
             extra_body={
                 **({"max_tokens": pc.max_tokens} if pc.max_tokens else {}),
                 **(self.cfg.extra_body or {}),
+                **(pc.extra_body or {}),
             },
         )
 

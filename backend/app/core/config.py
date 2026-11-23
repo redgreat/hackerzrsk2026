@@ -28,6 +28,7 @@ class PurposeModel(BaseModel):
     temperature: float = 0.3
     max_tokens: int | None = None
     timeout_seconds: float | None = Field(None, gt=0)
+    extra_body: dict | None = None
 
 
 class LLMSettings(BaseModel):

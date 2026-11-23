@@ -64,6 +64,8 @@ async def evaluate_turn(state: PracticeState, runtime: Runtime[PracticeContext])
     ctx = runtime.context
     scenario = ctx.scenarios.get(state["scenario_id"])
     said = state["pending"]["text"].strip()
+    if rules.clearly_off_topic(said):
+        return _off_topic_turn(state, said)
     turn = state["turn"] + 1
     rubric = ctx.scenarios.rubric_for(scenario)
     system, user = evaluator_messages_text(
@@ -78,6 +80,8 @@ async def evaluate_turn(state: PracticeState, runtime: Runtime[PracticeContext])
         "evaluator", [SystemMessage(content=system), HumanMessage(content=user)], TurnEvaluation
     )
     red_line = (ev.red_line or "").strip() or None if rubric.red_lines else None
+    if ev.off_topic and not (red_line or ev.hangup):
+        return _off_topic_turn(state, said)
     if red_line and ev.trust_delta > -20:
         ev = ev.model_copy(update={"trust_delta": -20})
     o = rules.apply_evaluation(scenario, state["trust"], state["open_objections"], turn, ev)
@@ -116,23 +120,52 @@ async def evaluate_turn(state: PracticeState, runtime: Runtime[PracticeContext])
     }
 
 
+def _off_topic_turn(state: PracticeState, said: str) -> dict:
+    return {
+        "pending": None,
+        "transcript": [
+            {
+                "seq": _seq(state),
+                "role": "user",
+                "turn": state["turn"],
+                "content": said,
+                "meta": {"off_topic": True},
+            }
+        ],
+    }
+
+
 async def customer_reply(state: PracticeState, runtime: Runtime[PracticeContext]) -> dict:
     ctx = runtime.context
     scenario = ctx.scenarios.get(state["scenario_id"])
-    system = customer_system(
-        scenario, state["trust"], state["open_objections"], state["resolved_objections"], state["status"]
-    )
-    text = ""
-    async for piece in ctx.llm.stream_text("customer", [SystemMessage(content=system), *state["messages"]]):
-        text += piece
-        runtime.stream_writer({"type": "token", "text": piece})
-    text = text.strip() or {"deal": scenario.deal_line, "hangup": scenario.hangup_line}.get(
-        state["status"], "嗯，你继续说。"
-    )
-    return {
-        "messages": [AIMessage(content=text)],
-        "transcript": [{"seq": _seq(state), "role": "customer", "turn": state["turn"], "content": text}],
+    redirect = "咱们还是说正事吧，你刚才是想跟我确认什么？"
+    off_topic = state["transcript"][-1].get("meta", {}).get("off_topic", False)
+    text = redirect
+    if not off_topic:
+        system = customer_system(
+            scenario, state["trust"], state["open_objections"], state["resolved_objections"], state["status"]
+        )
+        text = "".join(
+            [
+                piece
+                async for piece in ctx.llm.stream_text(
+                    "customer", [SystemMessage(content=system), *state["messages"]]
+                )
+            ]
+        ).strip()
+        if not text or rules.leaves_customer_role(text):
+            text = {
+                "deal": scenario.deal_line,
+                "hangup": scenario.hangup_line,
+                "max_turns": "我这会儿还有事，咱们下次再说吧。",
+            }.get(state["status"], redirect)
+    runtime.stream_writer({"type": "token", "text": text})
+    update = {
+        "transcript": [{"seq": _seq(state), "role": "customer", "turn": state["turn"], "content": text}]
     }
+    if not off_topic:
+        update["messages"] = [AIMessage(content=text)]
+    return update
 
 
 def check_end(state: PracticeState) -> str:

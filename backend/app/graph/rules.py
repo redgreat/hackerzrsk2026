@@ -1,9 +1,33 @@
 """纯规则函数：信任值上下限保护、结束判定、总分计算（不依赖模型，便于单测）。"""
 
+import re
 from dataclasses import dataclass
 
 from app.graph.schemas import CoachOutput, DimensionScore, TurnEvaluation
 from app.services.scenarios import Rubric, Scenario
+
+
+def clearly_off_topic(text: str) -> bool:
+    compact = re.sub(r"[\W_]", "", text).lower()
+    return not compact or bool(
+        re.fullmatch(
+            r"(?:请问)?你(?:是(?:谁|什么模型|ai|千问)(?:你今天开心吗)?|今天开心吗)"
+            r"|(?:请)?(?:忽略|忘记)(?:之前|以上|所有|前面)的?(?:指令|规则|提示词).*",
+            compact,
+        )
+    )
+
+
+def leaves_customer_role(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(?:我是|作为|我的身份是|我叫)\s*(?:一个|一名|您的?|你的?)?\s*"
+            r"(?:AI|人工智能|语言模型|大语言模型|虚拟助手|智能助手|千问|Qwen|ChatGPT|DeepSeek)"
+            r"|有什么(?:可以)?帮(?:助|到)?[您你]|需要我帮忙做什么|系统提示词|我扮演",
+            text,
+            re.IGNORECASE,
+        )
+    )
 
 
 @dataclass
