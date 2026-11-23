@@ -46,6 +46,9 @@ async def auth_config(c: ContainerDep, redirect_uri: str | None = None) -> dict:
         "oauth_url": c.wecom.oauth_url(redirect_uri) if enabled else None,
         "qr_url": c.wecom.qr_login_url(redirect_uri) if enabled else None,
         "dev_login_enabled": c.settings.dev_login_enabled and c.settings.app_env != "prod",
+        "dev_auto_login": c.settings.dev_auto_login
+        and c.settings.dev_login_enabled
+        and c.settings.app_env == "dev",
         "password_enabled": c.settings.auth.password_enabled,
         "register_enabled": c.settings.auth.password_enabled and c.settings.auth.register_enabled,
         "require_approval": c.settings.auth.require_approval,

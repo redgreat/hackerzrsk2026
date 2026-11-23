@@ -240,6 +240,7 @@ export interface AuthConfig {
   oauth_url: string | null
   qr_url: string | null
   dev_login_enabled: boolean
+  dev_auto_login: boolean
   password_enabled: boolean
   register_enabled: boolean
   require_approval: boolean

@@ -36,6 +36,10 @@ onMounted(async () => {
       return finish(r.token, r.user)
     }
     const cfg = await api.authConfig(`${location.origin}/login`)
+    if (cfg.dev_auto_login) {
+      const r = await api.devLogin('local-admin', '本地管理员', '开发')
+      return finish(r.token, r.user)
+    }
     wecomEnabled.value = cfg.wecom_enabled
     devEnabled.value = cfg.dev_login_enabled
     passwordEnabled.value = cfg.password_enabled

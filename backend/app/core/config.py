@@ -141,6 +141,7 @@ class Settings(BaseSettings):
     jwt_secret: str = DEV_JWT_SECRET
     jwt_expire_hours: int = 24 * 7
     dev_login_enabled: bool = True
+    dev_auto_login: bool = False
     # 可查看全员统计的工号；为空时任何登录用户都可查看（仅聚合数据）
     admin_userids: list[str] = Field(default_factory=list)
 
