@@ -44,7 +44,13 @@ def apply_evaluation(
     scenario: Scenario, trust: int, open_ids: list[str], turn: int, ev: TurnEvaluation
 ) -> TurnOutcome:
     r = scenario.state_rules
-    resolved = [oid for oid in dict.fromkeys(ev.resolved_objection_ids) if oid in open_ids]
+    # 模型有时会照抄提示中的「[id] 说明」，仍只允许命中当前未化解的顾虑。
+    resolved_ids = []
+    for raw_id in ev.resolved_objection_ids:
+        oid = raw_id.strip()
+        bracketed = re.fullmatch(r"\[([\w-]+)\](?:\s+.*)?", oid)
+        resolved_ids.append(bracketed[1] if bracketed else oid)
+    resolved = [oid for oid in dict.fromkeys(resolved_ids) if oid in open_ids]
     delta = max(-r.max_loss_per_turn, min(r.max_gain_per_turn, ev.trust_delta))
     after = max(0, min(100, trust + delta))
     remaining = [oid for oid in open_ids if oid not in resolved]

@@ -26,6 +26,18 @@ def test_unknown_objection_ids_ignored(registry):
     assert o.resolved == ["emotion"] and o.open_objections == ["solution"]
 
 
+def test_bracketed_objection_ids_are_normalized(registry):
+    s = registry.get("S01")
+    outcome = rules.apply_evaluation(
+        s,
+        30,
+        ["emotion", "solution"],
+        1,
+        _ev(5, ["[emotion] 顾虑描述", "emotion", "[unknown]", " [solution] "]),
+    )
+    assert outcome.resolved == ["emotion", "solution"]
+
+
 def test_no_deal_while_key_objection_open(registry):
     s = registry.get("S01")
     o = rules.apply_evaluation(s, 65, ["emotion", "compensation"], 6, _ev(15))

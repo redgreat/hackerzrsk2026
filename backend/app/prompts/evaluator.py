@@ -11,6 +11,8 @@ EVALUATOR_SYSTEM = """你是话术陪练系统中的“客户心理评估器”�
 ## 客户尚未化解的顾虑（只能从这里选择 resolved_objection_ids）
 {open_objections}
 
+resolved_objection_ids 只填写方括号内的裸 ID，例如列表中的「[action] 某个顾虑」在 JSON 中填 "action"。
+
 ## 客户的隐藏需求
 {hidden_needs}
 
