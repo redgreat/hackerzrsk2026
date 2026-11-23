@@ -57,7 +57,7 @@ where c.id in (select b.callId from recall_excellent_call a left join recall_rec
             └── PostgreSQL：users(+密码/状态/角色) recordings recording_questions exam_attempts
 ```
 
-新增配置（`backend/.env`，均有默认值，可不配）：
+新增配置（写在 `config/config.yml`，均有默认值，可不配）：
 
 ```
 RECORDINGS__ASR_PROVIDER=stub|dashscope|none

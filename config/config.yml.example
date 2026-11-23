@@ -1,0 +1,82 @@
+# AI 客户陪练 配置样例
+# 使用方法：复制为 config/config.yml 后修改（config.yml 含密钥，已加入 .gitignore，禁止提交）。
+# 容器部署时 config/ 目录以只读方式挂载到 /app/config，路径由环境变量 CONFIG_PATH 指定。
+# 环境变量只用于覆盖单个字段（如 APP_ENV=prod），不读取 .env 文件。
+
+# 运行环境：dev / test / prod（prod 禁用 stub 模型、开发登录；jwt_secret 必须 ≥32 位）
+app_env: prod
+log_level: INFO
+
+# 数据库（云上 PostgreSQL，需已安装 pgvector 扩展；业务表与 LangGraph checkpoint 同库）
+database_url: postgresql+psycopg://coach_user:change_me@your-pg-host.example.com:5432/ai_coach
+db_pool_size: 10
+
+# 登录与会话
+# 生成方法：python -c "import secrets;print(secrets.token_urlsafe(48))"
+jwt_secret: change_this_to_a_random_string_of_at_least_32_chars
+jwt_expire_hours: 168
+dev_login_enabled: false
+# 管理员工号（可查看管理后台）。生产环境必须配置
+admin_userids: ["E10001"]
+# 允许的前端来源（开发时的 Vite 地址等）
+cors_origins: ["http://localhost:5173"]
+
+# 账号密码登录 / 新人注册（审核后才能登录）
+auth:
+  password_enabled: true
+  register_enabled: true
+  require_approval: true
+
+# 隐私：进入模型前脱敏手机号、邮箱、证件号
+mask_pii: true
+# 人工带教单次成本（元），用于成本对比统计
+manual_coaching_cost_yuan: 25
+
+# 大模型（OpenAI 兼容接口）。provider=stub 为离线规则模型，仅用于开发
+llm:
+  provider: openai
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  api_key: your_llm_api_key
+  model: qwen-plus
+  timeout_seconds: 60
+  max_retries: 2
+  # 厂商额外参数，例如关闭深度思考
+  # extra_body: {"enable_thinking": false}
+  # 单价（元/百万 token），用于成本统计
+  pricing:
+    qwen-plus: {input: 0.8, output: 2.0}
+  # 按用途覆盖温度 / 模型，可选
+  coach: {temperature: 0.2, max_tokens: 3000}
+
+# 向量模型（知识库语义检索，可选；关闭时使用关键词检索）
+embedding:
+  enabled: false
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  api_key: your_embedding_api_key
+  model: text-embedding-v3
+  dimensions: 1024
+
+# 语音（可选）。asr/tts 为 none 时前端隐藏按住说话
+speech:
+  asr_provider: none        # none / openai / stub
+  tts_provider: none        # none / openai / stub
+  base_url: null
+  api_key: null
+  asr_model: whisper-1
+  tts_model: tts-1
+  tts_voice: alloy
+
+# 企业微信自建应用（不配置则只能用账号密码登录）
+wecom:
+  corp_id: null
+  agent_id: null
+  secret: null
+  token: null               # 应用「接收消息」里的 Token
+  encoding_aes_key: null    # 应用「接收消息」里的 EncodingAESKey
+  public_base_url: null     # 如 https://coach.example.com（报告链接、OAuth 回调使用）
+
+# 初始管理员（init-db 时若工号不存在则创建；已存在不修改）。请改为自己的密码
+# seed_admin:
+#   userid: admin
+#   name: 管理员
+#   password: change_me_123

@@ -129,4 +129,4 @@ START → init_scenario
 ## 8. 部署
 
 - 初期：单台服务器，Docker Compose（FastAPI 同时托管 H5 + pgvector/PostgreSQL），前置 Nginx/Caddy 做 HTTPS。见根目录 `docker-compose.yml` 与 README。
-- 配置通过环境变量 / `.env` 注入，密钥不入库。
+- 配置通过 `config/config.yml`（CONFIG_PATH 指定）注入，只读挂载进容器，密钥不入库。数据库为云上 PostgreSQL，不随 Compose 部署。

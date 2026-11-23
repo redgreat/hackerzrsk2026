@@ -1,14 +1,24 @@
-"""全局配置：唯一入口，全部来自环境变量 / backend/.env（嵌套字段用 `__` 分隔）。"""
+"""全局配置：唯一入口，来自 config/config.yml（CONFIG_PATH），环境变量仅作单字段覆盖。"""
 
+import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+    YamlConfigSettingsSource,
+)
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 PROJECT_DIR = BACKEND_DIR.parent
+# 配置文件路径：环境变量 CONFIG_PATH 指定，默认 <项目根>/config/config.yml（与 git_mcp_server 一致）
+DEFAULT_CONFIG_PATH = PROJECT_DIR / "config" / "config.yml"
+logger = logging.getLogger(__name__)
 DEV_JWT_SECRET = "dev-only-insecure-secret-change-me-in-prod"
 
 Purpose = Literal["customer", "evaluator", "coach", "hint", "analyst"]
@@ -101,6 +111,14 @@ class AuthSettings(BaseModel):
     require_approval: bool = True
 
 
+class SeedAdminSettings(BaseModel):
+    """init-db 时若该工号不存在则创建为管理员（已存在则不改动，避免覆盖已修改的密码）。"""
+
+    userid: str
+    name: str = "管理员"
+    password: str = Field(min_length=6, max_length=64)
+
+
 class RecordingSettings(BaseModel):
     """优质录音：来源（dbmcp）、转写（百炼 Paraformer）。"""
 
@@ -126,12 +144,24 @@ class RecordingSettings(BaseModel):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=BACKEND_DIR / ".env",
-        env_file_encoding="utf-8",
-        env_nested_delimiter="__",
-        extra="ignore",
-    )
+    """配置唯一来源：YAML 配置文件（CONFIG_PATH），环境变量仅用于覆盖单个字段（如 APP_ENV=prod）。不读取 .env。"""
+
+    model_config = SettingsConfigDict(env_nested_delimiter="__", extra="ignore")
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        path = Path(os.getenv("CONFIG_PATH") or DEFAULT_CONFIG_PATH)
+        if not path.is_file():
+            logger.warning("配置文件不存在：%s，使用内置默认值", path)
+            return init_settings, env_settings
+        return init_settings, env_settings, YamlConfigSettingsSource(settings_cls, yaml_file=path)
 
     app_env: Literal["dev", "test", "prod"] = "dev"
     log_level: str = "INFO"
@@ -159,6 +189,7 @@ class Settings(BaseSettings):
     speech: SpeechSettings = SpeechSettings()
     wecom: WeComSettings = WeComSettings()
     auth: AuthSettings = AuthSettings()
+    seed_admin: SeedAdminSettings | None = None
     recordings: RecordingSettings = RecordingSettings()
 
     @property

@@ -10,3 +10,4 @@ backend/.env
 !**/.env.example
 data/
 doc/
+config/config.yml

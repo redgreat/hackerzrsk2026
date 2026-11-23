@@ -10,7 +10,7 @@ RUN pnpm build
 
 FROM python:3.13-slim AS app
 COPY --from=ghcr.io/astral-sh/uv:0.13 /uv /usr/local/bin/uv
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PYTHONUNBUFFERED=1 APP_ENV=prod
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PYTHONUNBUFFERED=1
 WORKDIR /srv/backend
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project

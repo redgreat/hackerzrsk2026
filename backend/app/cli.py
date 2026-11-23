@@ -37,7 +37,22 @@ def init_db() -> None:
 
     command.upgrade(Config(str(BACKEND_DIR / "alembic.ini")), "head")
     _run(_setup_langgraph())
+    seed = get_settings().seed_admin
+    if seed:
+        _run(_seed_admin(seed.userid, seed.name, seed.password))
     print("数据库初始化完成")
+
+
+async def _seed_admin(userid: str, name: str, password: str) -> None:
+    from app.db.session import create_engine, create_session_factory
+    from app.services.users import seed_admin_if_missing
+
+    engine = create_engine(get_settings())
+    try:
+        created = await seed_admin_if_missing(create_session_factory(engine), userid, name, password)
+        print(f"管理员 {userid}：{'已创建' if created else '已存在，未修改'}")
+    finally:
+        await engine.dispose()
 
 
 async def _ingest() -> int:

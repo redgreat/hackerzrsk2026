@@ -34,7 +34,7 @@ doc/            项目文档
 ```bash
 # 1. 后端
 cd backend
-cp .env.example .env              # 按需修改 DATABASE_URL；默认 LLM__PROVIDER=stub，不需要密钥
+cp ../config/config.yml.example ../config/config.yml   # 按需修改；本地开发可直接用 llm.provider: stub，不需要密钥
 uv sync
 uv run python -m app.cli init-db           # 执行迁移，并创建 LangGraph checkpoint/store 表
 uv run python -m app.cli ingest-knowledge  # 导入话术知识库
@@ -48,11 +48,11 @@ pnpm dev                                   # http://localhost:5173，/api 代理
 
 执行 `pnpm build` 后，后端会直接托管 `frontend/dist`，访问 http://127.0.0.1:8000 即可。
 
-接入真实模型：在 `backend/.env` 中设置 `LLM__PROVIDER=openai`，以及 `LLM__BASE_URL`、`LLM__API_KEY`、`LLM__MODEL`、`LLM__PRICING`。
+接入真实模型：在 `config/config.yml` 中设置 `llm.provider: openai`，以及 `llm.base_url`、`llm.api_key`、`llm.model`、`llm.pricing`。
 
 ## 测试
 
-真实语音试用需要可连接的 PostgreSQL（可使用已有远程实例），以及实际可用的模型和语音服务。在 `backend/.env` 中配置 `DATABASE_URL`，将 `LLM__PROVIDER`、`SPEECH__ASR_PROVIDER` 和 `SPEECH__TTS_PROVIDER` 设为 `openai` 并填写各自兼容接口地址、密钥和模型名。`stub` 仅用于联调，不能用来评价真实对话或识别效果。
+真实语音试用需要可连接的 PostgreSQL（可使用已有远程实例），以及实际可用的模型和语音服务。在 `config/config.yml` 中配置 `database_url`，将 `llm.provider`、`speech.asr_provider` 和 `speech.tts_provider` 设为 `openai` 并填写各自兼容接口地址、密钥和模型名。`stub` 仅用于联调，不能用来评价真实对话或识别效果。
 
 无需本地 Docker：连接准备好的数据库后，在 `backend/` 执行 `uv run python -m app.cli init-db` 和 `uv run python -m app.cli ingest-knowledge`，再按上面的后端、前端命令启动。数据库初始化会修改所配置的库，请确认目标库属于本项目。手机和企微内置浏览器须通过 HTTPS 访问，首次录音允许麦克风权限；自动播放受限时可点击回复旁的播放按钮。录音单轮最长 60 秒，松手后提交识别。
 
@@ -78,7 +78,7 @@ cd frontend && pnpm build                          # 类型检查 + 构建
 
 配置步骤（在企业微信管理后台完成）：
 
-1. 应用管理 → 自建应用 → **接收消息** → 设置 API 接收：URL 填 `https://<域名>/api/wecom/callback`，生成 Token 和 EncodingAESKey，写入 `backend/.env` 的 `WECOM__TOKEN`、`WECOM__ENCODING_AES_KEY`。
+1. 应用管理 → 自建应用 → **接收消息** → 设置 API 接收：URL 填 `https://<域名>/api/wecom/callback`，生成 Token 和 EncodingAESKey，写入 `config/config.yml` 的 `wecom.token`、`wecom.encoding_aes_key`。
 2. 同一页面开启语音识别（企微会随语音消息返回识别文字；具体菜单位置以企微后台为准）。
 3. 应用的 **OAuth 可信域名 / 网页授权回调域名** 配置为 `<域名>`，同时设置 `WECOM__PUBLIC_BASE_URL=https://<域名>`（报告链接使用）。扫码登录与企微内免登都依赖它。
 4. `WECOM__CORP_ID`、`WECOM__AGENT_ID`、`WECOM__SECRET` 填应用的 CorpID、AgentID、Secret。
@@ -110,24 +110,24 @@ cd frontend && pnpm build                          # 类型检查 + 构建
 
 ## 发布与部署
 
-镜像由 GitHub Actions 构建并推送到 GHCR（`ghcr.io/redgreat/hackerzrsk2026`），不使用阿里云。流程：
+镜像由 GitHub Actions 构建并推送到 Quay（`quay.io/zrsk/hackerzrsk2026`）。需要在 GitHub 仓库的 Settings → Secrets 中配置 `QUAY_USERNAME`、`QUAY_PASSWORD`。流程：
 
 1. 本地（Windows）执行 `.\script\release.ps1`，自动计算下一个版本号并打标签推送；也可指定版本：`.\script\release.ps1 v0.1.1`
-2. Actions（`.github/workflows/build-deploy.yml`）自动构建镜像，推送 `:v0.1.0` 和 `:latest`
+2. Actions（`.github/workflows/build-deploy.yml`）自动构建镜像，推送 `:<版本>` 和 `:latest`
 3. 服务器上部署：
 
 ```bash
-# 首次部署：准备配置
-echo "POSTGRES_PASSWORD=<强密码>" > .env          # 根目录，供 compose 使用
-cp backend/.env.example backend/.env             # 设置 APP_ENV=prod、JWT_SECRET（≥32位）、真实模型与企业微信配置
-# 若镜像为私有：docker login ghcr.io -u <GitHub 用户名> -p <PAT(read:packages)>
+# 首次部署：准备配置（服务器上的 config/ 目录即配置来源，不需要 .env）
+cp config/config.yml.example config/config.yml   # 填写 database_url（云上 PostgreSQL）、jwt_secret、app_env: prod、llm、wecom 等
+# 若镜像为私有：export QUAY_USERNAME=... QUAY_PASSWORD=...（脚本会自动 docker login quay.io），或手动 docker login quay.io
 
-./script/redeploy.sh --migrate --tag v0.1.0      # 拉取、迁移、启动、健康检查
+./script/redeploy.sh --migrate --tag v0.2.1      # 拉取、迁移、启动、健康检查
 ./script/redeploy.sh                             # 之后升级到 latest
-./script/redeploy.sh --tag v0.1.1 --migrate      # 有新迁移时加 --migrate
+./script/redeploy.sh --tag v0.2.2 --migrate      # 有新迁移时加 --migrate
 ```
 
 首次部署后还需要导入话术知识库：`docker compose run --rm app python -m app.cli ingest-knowledge`。
+数据库使用云上 PostgreSQL（需提前安装 pgvector 扩展），部署文件不包含数据库容器。
 
 服务只监听 `127.0.0.1:8000`，企业微信要求 HTTPS 可信域名，需要在前面加一层反向代理（Nginx/Caddy）并配置证书，把 `/` 转发到 `127.0.0.1:8000`（SSE 接口需关闭缓冲）。
 

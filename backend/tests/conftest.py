@@ -1,11 +1,15 @@
 import asyncio
+import os
 import sys
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
-from app.core.config import Settings
+# 测试不读取本机的 config/config.yml（含生产库与密钥），指向不存在的路径即使用内置默认值
+os.environ["CONFIG_PATH"] = "/nonexistent/test-config.yml"
+
+from app.core.config import Settings  # noqa: E402
 from app.graph.builder import build_practice_graph
 from app.graph.state import PracticeContext
 from app.services.llm import LLMGateway

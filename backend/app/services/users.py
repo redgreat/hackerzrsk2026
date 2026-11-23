@@ -86,6 +86,18 @@ async def change_password(sf: async_sessionmaker[AsyncSession], user_id: int, ol
         user.password_hash = await asyncio.to_thread(hash_password, new)
 
 
+async def seed_admin_if_missing(
+    sf: async_sessionmaker[AsyncSession], userid: str, name: str, password: str
+) -> bool:
+    """工号不存在时创建管理员账号，返回是否新建。"""
+    async with sf() as db:
+        exists = (await db.execute(select(User.id).where(User.userid == userid))).first() is not None
+    if exists:
+        return False
+    await create_or_reset_admin(sf, userid, name, password)
+    return True
+
+
 async def create_or_reset_admin(
     sf: async_sessionmaker[AsyncSession], userid: str, name: str, password: str
 ) -> User:

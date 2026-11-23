@@ -79,7 +79,7 @@ hackerzr2026/
 - "客户"角色与"教练"评分角色**分离为不同节点/Agent**：客户 Agent 温度偏高求真实，教练 Agent 温度低 + 结构化输出求稳定。
 - 客户 Agent 必须受隐藏状态（信任值、未解决异议）约束，避免"三句话被说服"。
 - 模型调用统一经过一个封装层，便于切换厂商与统计 token 成本（成本数据是比赛汇报的重点）。
-- 密钥只放 `.env`（已在 .gitignore），不得写入代码、文档或日志。
+- 密钥只放 `config/config.yml`（已在 .gitignore），不得写入代码、文档或日志。
 - 文档与注释使用中文；代码标识符使用英文。
 
 ## 数据安全红线（必须遵守）
@@ -116,7 +116,7 @@ pnpm build                                     # vue-tsc 类型检查 + 构建�
 - pytest-asyncio 的 fixture 和测试都使用 session 级事件循环（见 pyproject）。如果改成函数级，连接池会挂在另一个循环上导致超时。
 
 发布与部署：
-- 本地（Windows）：`.\script\release.ps1 [vX.Y.Z]` 只负责打标签并推送，触发 GitHub Actions 构建 GHCR 镜像。
+- 本地（Windows）：`.\script\release.ps1 [vX.Y.Z]` 只负责打标签并推送，触发 GitHub Actions 构建 Quay 镜像（quay.io/zrsk/hackerzrsk2026）。
 - 服务器：`./script/redeploy.sh [--tag vX.Y.Z] [--migrate]` 只负责服务器上拉取与重启，不依赖本地环境。
 - 不要把两者的逻辑混在一起。
 
