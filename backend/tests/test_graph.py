@@ -1,7 +1,9 @@
 import uuid
 
+import pytest
 from langgraph.types import Command
 
+from app.core.errors import UpstreamError
 from app.services.llm import usage_scope
 from app.services.memory import load_profile
 
@@ -76,6 +78,30 @@ async def test_user_opens_scenario(graph, ctx):
     await _run(graph, ctx, {"session_id": "s", "user_id": "u1", "scenario_id": "S02"}, cfg)
     v = (await graph.aget_state(cfg)).values
     assert v["transcript"][0]["role"] == "customer"
+
+
+async def test_failed_report_can_resume_from_checkpoint(graph, ctx, monkeypatch):
+    cfg = _cfg()
+    await _run(graph, ctx, {"session_id": "s", "user_id": "u1", "scenario_id": "S01"}, cfg)
+    await _run(graph, ctx, Command(resume={"type": "message", "text": "您好，方便说下故障吗？"}), cfg)
+    calls = 0
+    structured = ctx.llm.structured
+
+    async def score(purpose, messages, schema):
+        nonlocal calls
+        assert purpose == "coach"
+        calls += 1
+        if calls == 1:
+            raise TimeoutError
+        return await structured(purpose, messages, schema)
+
+    monkeypatch.setattr(ctx.llm, "structured", score)
+    with pytest.raises(UpstreamError, match="评分等待超时"):
+        await _run(graph, ctx, Command(resume={"type": "end"}), cfg)
+    assert calls == 1
+    assert (await graph.aget_state(cfg)).next == ("coach_report",)
+    await _run(graph, ctx, None, cfg)
+    assert (await graph.aget_state(cfg)).values["report"]["outcome"] == "user_end"
 
 
 async def test_off_topic_skips_models_and_does_not_count(graph, ctx):

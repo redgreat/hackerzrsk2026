@@ -3,10 +3,13 @@
 先评估、后回复：客户态度由 evaluate_turn 更新后的信任值决定，客户 Agent 不能自行“被说服”。
 """
 
+import asyncio
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
+from app.core.errors import UpstreamError
 from app.graph import rules
 from app.graph.schemas import CoachOutput, TurnEvaluation
 from app.graph.state import PracticeContext, PracticeState
@@ -233,9 +236,13 @@ async def coach_report(state: PracticeState, runtime: Runtime[PracticeContext]) 
         refs = await _references(ctx, f"{scenario.goal} {user_lines[-300:]}", scenario.id, 3)
         profile = describe_profile(await load_profile(runtime.store, state["user_id"]))
         system, user = coach_messages_text(scenario, rubric, {**state, "status": status}, refs, profile)
-        out = await ctx.llm.structured(
-            "coach", [SystemMessage(content=system), HumanMessage(content=user)], CoachOutput
-        )
+        try:
+            async with asyncio.timeout(30):
+                out = await ctx.llm.structured(
+                    "coach", [SystemMessage(content=system), HumanMessage(content=user)], CoachOutput
+                )
+        except TimeoutError as exc:
+            raise UpstreamError("评分等待超时，请重试评分") from exc
         dims = rules.normalize_dimensions(rubric, out)
         violations = (
             rules.red_line_violations(state["inner_thoughts"], out.red_line_violations)

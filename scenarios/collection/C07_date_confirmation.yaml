@@ -5,21 +5,21 @@ difficulty: 2
 max_turns: 4
 estimated_minutes: 2
 tags: [日期核实, 跟进安排]
-summary: 客户提到一个预计日期，练习如何核实并记录下一步。
-background: 你是负责跟进还款进展的坐席，已与林女士核实身份。此前有人预计二十号会有进展，本次需要向她核实二十号能否处理。由你先开口，客户的答复还未给出。
-goal: 问清日期从何而来、是否确定，如实复述，并与客户确认下一次核实安排。
+summary: 坐席方提出二十号作为目标日期，练习向客户核实能否还款并约定跟进。
+background: 你是负责跟进还款的坐席，已与林女士核实身份。你方拟定二十号作为还款目标日期，需要向林女士确认届时能否打款。由你先开口，林女士尚未确认这个日期。
+goal: 核实客户二十号能否打款，如实复述她的答复，并约定下一次联系的时间和核实事项。
 persona:
   name: 林女士
   role: 客户
   personality: 愿意说明情况，但不愿保证自己无法控制的事
-  speaking_style: 简短直接。被问及时说明日期来自他人的预计，尚未确认。
-  background: 坐席问二十号能否处理时，先明确回答「二十号我不太确定，那是别人之前跟我说的」。若坐席把预计写成确定承诺，明确纠正。可以商量下次核实时间。
-  hidden_needs: [希望坐席准确记录，不把预计写成承诺]
+  speaking_style: 简短直接。被问及时说明自己目前不能确定能否按期打款。
+  background: 二十号由坐席方提出。坐席问二十号能否打款时，回答「二十号我现在还不能确定能不能打款」。没有已知的替代打款日期，也没有第三方告知或预计日期。可以商量下次核实时间。
+  hidden_needs: [希望坐席准确记录还款日期待确认]
   objections:
     - id: certainty
-      text: 日期是转述的预计，结果仍不确定
+      text: 坐席方提出二十号作为目标日期，客户尚未确认能否打款
       key: true
-      resolve_hints: [预计, 不确定, 确认]
+      resolve_hints: [待确认, 不确定, 能否打款]
     - id: followup
       text: 还没有约定下一次核实的时间和动作
       key: true
@@ -32,6 +32,6 @@ state_rules:
   deal_threshold: 70
   hangup_threshold: 5
   min_turns_to_deal: 2
-deal_line: 好，那就按约定时间再核实。现在先记为预计，等确认后我再反馈。
+deal_line: 好，那就按约定时间再联系。二十号能不能打款，现在还没定。
 hangup_line: 我现在不能保证，先这样吧。
 scoring: date_confirmation

@@ -16,6 +16,7 @@ const messages = ref<Message[]>([])
 const streaming = ref('')
 const busy = ref(false)
 const ending = ref(false)
+const retryReport = ref(false)
 const input = ref('')
 const voiceMode = ref(false)
 const asrEnabled = ref(false)
@@ -39,11 +40,12 @@ function push(role: Message['role'], content: string) {
 onMounted(async () => {
   try {
     const [s, sc] = await Promise.all([api.session(sid), api.speechConfig()])
-    if (s.status !== 'ongoing') {
+    if (s.status !== 'ongoing' && s.report_ready) {
       if (s.mode === 'exam' && s.exam_attempt_id) return router.replace(`/attempt/${s.exam_attempt_id}`)
       return router.replace(`/report/${sid}`)
     }
     session.value = s
+    retryReport.value = s.status !== 'ongoing'
     messages.value = s.messages
     turn.value = s.turns
     asrEnabled.value = sc.asr_enabled && recorder.supported
@@ -58,12 +60,13 @@ onMounted(async () => {
 
 async function send(text: string) {
   text = text.trim()
-  if (!text || busy.value) return
+  if (!text || busy.value || retryReport.value) return
   busy.value = true
   input.value = ''
   push('user', text)
   streaming.value = ''
   let finished = false
+  let failed = false
   try {
     await api.sendMessage(sid, text, (ev) => {
       if (ev.type === 'token') {
@@ -72,12 +75,15 @@ async function send(text: string) {
       } else if (ev.type === 'status') {
         ending.value = true
       } else if (ev.type === 'error') {
+        failed = true
+        retryReport.value = ending.value
+        ending.value = false
         showFailToast(ev.message)
       } else if (ev.type === 'done') {
         turn.value = ev.turn
         const last = messages.value.at(-1)
         if (last?.role === 'user') last.turn = ev.turn
-        finished = ev.status !== 'ongoing'
+        finished = !failed && ev.status !== 'ongoing'
       }
     })
     if (streaming.value) {
@@ -86,6 +92,8 @@ async function send(text: string) {
       speaker.speak(reply, sid)
     }
   } catch (e) {
+    retryReport.value = ending.value
+    ending.value = false
     showFailToast((e as Error).message)
     messages.value.pop()
     input.value = text
@@ -100,7 +108,7 @@ async function send(text: string) {
 }
 
 async function onPressStart() {
-  if (busy.value) return
+  if (busy.value || retryReport.value) return
   speaker.stop()
   try {
     await recorder.start()
@@ -139,11 +147,13 @@ async function askHint() {
 }
 
 async function endPractice() {
-  if (busy.value) return
-  try {
-    await showConfirmDialog({ title: '结束对练', message: '确定结束并生成评分报告吗？' })
-  } catch {
-    return
+  if (busy.value || ending.value) return
+  if (!retryReport.value) {
+    try {
+      await showConfirmDialog({ title: '结束对练', message: '确定结束并生成评分报告吗？' })
+    } catch {
+      return
+    }
   }
   speaker.stop()
   ending.value = true
@@ -152,6 +162,7 @@ async function endPractice() {
     router.replace(`/report/${sid}`)
   } catch (e) {
     ending.value = false
+    retryReport.value = true
     showFailToast((e as Error).message)
   }
 }
@@ -197,11 +208,11 @@ async function endPractice() {
       <div class="actions">
         <span class="muted">第 {{ turn }} 轮<van-tag v-if="session?.mode === 'exam'" type="danger" style="margin-left: 6px">考试</van-tag></span>
         <div>
-          <van-button v-if="session?.mode !== 'exam'" size="small" round icon="bulb-o" :disabled="busy" @click="askHint">求助</van-button>
-          <van-button size="small" round type="danger" plain :disabled="busy" @click="endPractice">结束</van-button>
+          <van-button v-if="session?.mode !== 'exam'" size="small" round icon="bulb-o" :disabled="busy || retryReport" @click="askHint">求助</van-button>
+          <van-button size="small" round type="danger" plain :disabled="busy" @click="endPractice">{{ retryReport ? '重试评分' : '结束' }}</van-button>
         </div>
       </div>
-      <div class="input-row">
+      <div v-if="!retryReport" class="input-row">
         <van-icon
           v-if="asrEnabled"
           :name="voiceMode ? 'comment-o' : 'audio'"

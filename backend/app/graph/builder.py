@@ -28,7 +28,7 @@ def build_practice_graph(
     g.add_node("evaluate_turn", nodes.evaluate_turn, retry_policy=LLM_RETRY)
     g.add_node("customer_reply", nodes.customer_reply)
     g.add_node("hint", nodes.hint, retry_policy=LLM_RETRY)
-    g.add_node("coach_report", nodes.coach_report, retry_policy=LLM_RETRY)
+    g.add_node("coach_report", nodes.coach_report)
 
     g.add_edge(START, "init_scenario")
     g.add_edge("init_scenario", "wait_input")
