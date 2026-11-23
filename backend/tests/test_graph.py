@@ -84,11 +84,28 @@ async def test_off_topic_skips_models_and_does_not_count(graph, ctx):
     with usage_scope() as usage:
         for said in ("你是谁,你今天开心吗", "???"):
             events = await _run(graph, ctx, Command(resume={"type": "message", "text": said}), cfg)
-            assert "咱们还是说正事吧" in next(e["text"] for e in events if e["type"] == "token")
+            assert "这个先不聊" in next(e["text"] for e in events if e["type"] == "token")
     assert not usage.records
     values = (await graph.aget_state(cfg)).values
     assert values["turn"] == 0 and values["trust"] == 20
     assert len(values["messages"]) == 1
+
+
+async def test_evaluator_rejects_unrelated_chitchat(graph, ctx, monkeypatch):
+    async def evaluate(purpose, messages, schema):
+        assert purpose == "evaluator"
+        return schema(is_relevant=False, trust_delta=0, inner_thought="")
+
+    monkeypatch.setattr(ctx.llm, "structured", evaluate)
+    cfg = _cfg()
+    await _run(graph, ctx, {"session_id": "s", "user_id": "u1", "scenario_id": "C07"}, cfg)
+    with usage_scope() as usage:
+        events = await _run(graph, ctx, Command(resume={"type": "message", "text": "你好，今天天气"}), cfg)
+    assert [e["text"] for e in events if e["type"] == "token"] == [
+        "这个先不聊。你打这通电话是想跟我确认什么？"
+    ]
+    assert not usage.records
+    assert (await graph.aget_state(cfg)).values["turn"] == 0
 
 
 async def test_out_of_character_reply_is_never_emitted(graph, ctx, monkeypatch):

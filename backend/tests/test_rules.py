@@ -4,7 +4,11 @@ from app.graph.schemas import CoachOutput, DimensionScore, TurnEvaluation
 
 def _ev(delta, resolved=(), hangup=False):
     return TurnEvaluation(
-        trust_delta=delta, resolved_objection_ids=list(resolved), inner_thought="x", hangup=hangup
+        is_relevant=True,
+        trust_delta=delta,
+        resolved_objection_ids=list(resolved),
+        inner_thought="x",
+        hangup=hangup,
     )
 
 

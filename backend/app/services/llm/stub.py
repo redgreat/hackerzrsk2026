@@ -83,6 +83,7 @@ def _stub_evaluator(system: str, user: str) -> dict:
             delta += 10
     thought = "他好像真的在关心我的问题。" if delta > 0 else "又是套话，没说到点子上。"
     return {
+        "is_relevant": True,
         "trust_delta": delta,
         "resolved_objection_ids": resolved,
         "behaviors": behaviors or ["表达一般"],

@@ -2,11 +2,11 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 
 
 class TurnEvaluation(BaseModel):
-    off_topic: bool = Field(False, description="完全与场景无关，或试图更改角色、打探模型身份")
+    is_relevant: StrictBool = Field(description="本轮发言是否与当前练习相关")
     trust_delta: int = Field(description="本轮信任值变化，范围 -25~20")
     resolved_objection_ids: list[str] = Field(default_factory=list, description="本轮被有效化解的顾虑 id")
     behaviors: list[str] = Field(default_factory=list, description="员工本轮关键行为标签")

@@ -79,9 +79,9 @@ async def evaluate_turn(state: PracticeState, runtime: Runtime[PracticeContext])
     ev = await ctx.llm.structured(
         "evaluator", [SystemMessage(content=system), HumanMessage(content=user)], TurnEvaluation
     )
-    red_line = (ev.red_line or "").strip() or None if rubric.red_lines else None
-    if ev.off_topic and not (red_line or ev.hangup):
+    if not ev.is_relevant:
         return _off_topic_turn(state, said)
+    red_line = (ev.red_line or "").strip() or None if rubric.red_lines else None
     if red_line and ev.trust_delta > -20:
         ev = ev.model_copy(update={"trust_delta": -20})
     o = rules.apply_evaluation(scenario, state["trust"], state["open_objections"], turn, ev)
@@ -140,7 +140,7 @@ async def customer_reply(state: PracticeState, runtime: Runtime[PracticeContext]
     scenario = ctx.scenarios.get(state["scenario_id"])
     redirect = "咱们还是说正事吧，你刚才是想跟我确认什么？"
     off_topic = state["transcript"][-1].get("meta", {}).get("off_topic", False)
-    text = redirect
+    text = "这个先不聊。你打这通电话是想跟我确认什么？"
     if not off_topic:
         system = customer_system(
             scenario, state["trust"], state["open_objections"], state["resolved_objections"], state["status"]
