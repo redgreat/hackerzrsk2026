@@ -15,6 +15,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
@@ -197,3 +198,46 @@ class ExamAttempt(TimestampMixin, Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TranscriptSnapshot(TimestampMixin, Base):
+    """同一来源的完整转写版本；原始导出只留私有文件，不存入此表。"""
+
+    __tablename__ = "transcript_snapshots"
+    __table_args__ = (UniqueConstraint("source_key", "source_hash"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    source_key: Mapped[str] = mapped_column(String(128), index=True)
+    source_hash: Mapped[str] = mapped_column(String(64))
+    source_file: Mapped[str] = mapped_column(Text)
+    source_labels: Mapped[str] = mapped_column(Text)
+    segments: Mapped[list] = mapped_column(JSONB, comment="完整基础脱敏转写，保留编号、声道、原始时间")
+    speaker_mapping: Mapped[dict] = mapped_column(JSONB)
+    speaker_mapping_status: Mapped[str] = mapped_column(String(64))
+    time_unit: Mapped[str] = mapped_column(String(32))
+    privacy_status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
+
+
+class KnowledgeEvent(TimestampMixin, Base):
+    """提取事件及向量；版本只追加，未审核事件不提供给检索。"""
+
+    __tablename__ = "knowledge_events"
+    __table_args__ = (UniqueConstraint("snapshot_id", "event_key", "extraction_hash"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(ForeignKey("transcript_snapshots.id"), index=True)
+    event_key: Mapped[str] = mapped_column(String(64))
+    extraction_hash: Mapped[str] = mapped_column(String(64))
+    extraction_version: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(256))
+    segment_start: Mapped[int] = mapped_column(Integer)
+    segment_end: Mapped[int] = mapped_column(Integer)
+    evidence_seqs: Mapped[list] = mapped_column(JSONB)
+    labels: Mapped[dict] = mapped_column(JSONB)
+    summary: Mapped[str] = mapped_column(Text)
+    applicability_limits: Mapped[list] = mapped_column(JSONB)
+    candidate_use: Mapped[str] = mapped_column(String(64))
+    policy_verification: Mapped[str] = mapped_column(String(32))
+    review_status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM))
+    embedding_model: Mapped[str | None] = mapped_column(String(128))

@@ -6,6 +6,7 @@ python -m app.cli check-scenarios   校验全部场景 / 评分表 / 题库 / �
 python -m app.cli create-admin --userid admin --password ******   创建或重置管理员账号
 python -m app.cli import-recordings [--file data/private/x.json] [--limit N]   导入优质录音（默认经 dbmcp）
 python -m app.cli process-recordings [--limit N]   转写 + AI 分析待处理录音
+python -m app.cli import-transcripts --file ../data/private/x.json   导入已有转写快照和待审核事件
 """
 
 import argparse
@@ -146,6 +147,22 @@ def _run(coro):
     return asyncio.run(coro, loop_factory=loop_factory)
 
 
+async def _import_transcripts(file: str) -> None:
+    from pathlib import Path
+
+    from app.db.session import create_engine, create_session_factory
+    from app.services.transcripts import import_file
+
+    engine = create_engine(get_settings())
+    try:
+        counts = await import_file(create_session_factory(engine), Path(file))
+        print(
+            f"导入完成：新增快照 {counts['snapshots_created']}，事件 {counts['events_created']}；全部待审核"
+        )
+    finally:
+        await engine.dispose()
+
+
 def main() -> None:
     setup_logging(get_settings().log_level)
     parser = argparse.ArgumentParser(prog="python -m app.cli")
@@ -158,12 +175,13 @@ def main() -> None:
             "create-admin",
             "import-recordings",
             "process-recordings",
+            "import-transcripts",
         ],
     )
     parser.add_argument("--userid")
     parser.add_argument("--name", default="")
     parser.add_argument("--password")
-    parser.add_argument("--file", help="录音 JSON 文件（放 data/private/，不要提交）")
+    parser.add_argument("--file", help="录音/转写 JSON 文件（放 data/private/，不要提交）")
     parser.add_argument("--limit", type=int)
     args = parser.parse_args()
     cmd = args.command
@@ -179,6 +197,10 @@ def main() -> None:
         _run(_import_recordings(args.file, args.limit))
     elif cmd == "process-recordings":
         _run(_process_recordings(args.limit or 20))
+    elif cmd == "import-transcripts":
+        if not args.file:
+            parser.error("import-transcripts 需要 --file")
+        _run(_import_transcripts(args.file))
     else:
         check_scenarios()
 
