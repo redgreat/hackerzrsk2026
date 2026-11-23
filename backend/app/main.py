@@ -14,6 +14,8 @@ from app.api import api_router
 from app.core.config import Settings, get_settings
 from app.core.container import Container
 from app.core.errors import register_error_handlers
+from app.core.log_db import ACCESS_LOGGER
+from app.core.log_db import install as install_db_log
 from app.core.logging import setup_logging
 from app.db.session import create_engine, create_session_factory
 from app.graph.builder import build_practice_graph
@@ -63,6 +65,11 @@ async def lifespan(app: FastAPI):
         exams = ExamService(
             ExamRegistry.load(settings.exams_dir, scenarios), sf, practice, recordings, scenarios
         )
+        from app.services import settings_store
+
+        applied = await settings_store.apply_overrides(sf, settings)
+        if applied:
+            logger.info("已应用后台运维配置覆盖 %d 项", applied)
         app.state.container = Container(
             settings=settings,
             engine=engine,
@@ -89,6 +96,8 @@ async def lifespan(app: FastAPI):
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     setup_logging(settings.log_level)
+    if settings.app_env != "test":
+        install_db_log(settings.psycopg_conninfo)
     app = FastAPI(
         title="AI 客户话术陪练",
         version="0.1.0",
@@ -105,6 +114,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     register_error_handlers(app)
+    access_log = logging.getLogger(ACCESS_LOGGER)
+
+    @app.middleware("http")
+    async def log_failed_requests(request, call_next):
+        response = await call_next(request)
+        if response.status_code >= 400 and request.url.path != "/api/health":
+            access_log.warning(
+                "%s %s -> %s",
+                request.method,
+                request.url.path,
+                response.status_code,
+                extra={"method": request.method, "path": request.url.path, "status": response.status_code},
+            )
+        return response
+
     app.include_router(api_router)
 
     dist = settings.frontend_dist

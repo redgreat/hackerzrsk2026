@@ -139,7 +139,9 @@ class Recording(TimestampMixin, Base):
     __table_args__ = {"comment": "优质录音（音频留在 OSS，仅存地址；转写文本已脱敏）"}
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    source: Mapped[str] = mapped_column(String(16), default="dbmcp", comment="dbmcp/file")
+    source: Mapped[str] = mapped_column(
+        String(16), default="file", comment="录音清单来源：file（历史数据可能为 dbmcp）"
+    )
     source_key: Mapped[str] = mapped_column(String(128), unique=True, comment="来源唯一键，防重复导入")
     audio_url: Mapped[str] = mapped_column(Text)
     title: Mapped[str] = mapped_column(String(128), default="")
@@ -197,3 +199,34 @@ class ExamAttempt(TimestampMixin, Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AppLog(Base):
+    __tablename__ = "app_logs"
+    __table_args__ = (
+        Index("ix_app_logs_created_at", "created_at"),
+        Index("ix_app_logs_level_created", "level", "created_at"),
+        {"comment": "应用日志：后端 WARNING 及以上、4xx/5xx 请求（不记录请求体与对话内容）"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    level: Mapped[str] = mapped_column(String(16), comment="WARNING/ERROR/CRITICAL")
+    logger: Mapped[str] = mapped_column(String(128), default="", comment="日志来源模块")
+    message: Mapped[str] = mapped_column(Text, default="", comment="日志正文")
+    exc: Mapped[str | None] = mapped_column(Text, comment="异常堆栈")
+    method: Mapped[str | None] = mapped_column(String(8), comment="HTTP 方法（请求日志）")
+    path: Mapped[str | None] = mapped_column(String(256), comment="请求路径（请求日志）")
+    status: Mapped[int | None] = mapped_column(Integer, comment="HTTP 状态码（请求日志）")
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+    __table_args__ = {"comment": "运维配置覆盖项（非敏感；密钥只放 config.yml）"}
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSONB)
+    updated_by: Mapped[str | None] = mapped_column(String(64))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

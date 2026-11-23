@@ -33,6 +33,7 @@ const router = createRouter({
         { path: 'exams', name: 'admin-exams', component: () => import('./views/admin/ExamAttemptsView.vue'), meta: { title: '考试成绩 · 管理后台' } },
         { path: 'exams/:id', name: 'admin-exam', component: () => import('./views/admin/ExamAttemptDetailView.vue'), meta: { title: '答卷详情 · 管理后台' } },
         { path: 'knowledge', name: 'admin-knowledge', component: () => import('./views/admin/KnowledgeView.vue'), meta: { title: '话术知识库 · 管理后台' } },
+        { path: 'settings', name: 'admin-settings', component: () => import('./views/admin/SettingsView.vue'), meta: { title: '运维配置 · 管理后台' } },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },

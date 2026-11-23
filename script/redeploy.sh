@@ -4,7 +4,7 @@
 # 用法:
 #   ./script/redeploy.sh                 # 部署 latest
 #   ./script/redeploy.sh --tag v0.2.1    # 部署指定版本
-#   ./script/redeploy.sh --migrate       # 部署前执行数据库迁移（首次部署或有新迁移时使用）
+#   ./script/redeploy.sh --no-migrate    # 跳过数据库迁移（默认每次部署都执行，已迁移的库是幂等的）
 # 可选：若环境中设置了 QUAY_USERNAME / QUAY_PASSWORD，脚本会先执行 docker login quay.io
 # ==========================================
 
@@ -12,7 +12,7 @@ set -euo pipefail
 
 IMAGE="quay.io/zrsk/hackerzrsk2026"
 TAG="latest"
-MIGRATE=false
+MIGRATE=true
 HEALTH_URL="http://127.0.0.1:8000/api/health"
 
 info()  { echo -e "\033[34m➤ $*\033[0m"; }
@@ -24,13 +24,22 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --tag)     TAG="${2:?--tag 需要版本号}"; shift 2 ;;
     --migrate) MIGRATE=true; shift ;;
+    --no-migrate) MIGRATE=false; shift ;;
     -h|--help) sed -n '2,7p' "$0"; exit 0 ;;
     *) die "未知参数: $1" ;;
   esac
 done
 
-# 脚本位于 <项目根>/script/，固定到项目根执行，与所在路径无关
-cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# 部署目录自动定位：脚本同级有 docker-compose.yml 则它就是部署目录（服务器上脚本与 compose 同放）；
+# 否则取上一级（仓库中脚本位于 <项目根>/script/）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${SCRIPT_DIR}/docker-compose.yml" ]]; then
+  ROOT_DIR="${SCRIPT_DIR}"
+else
+  ROOT_DIR="$(dirname "${SCRIPT_DIR}")"
+fi
+cd "${ROOT_DIR}"
+echo "部署目录: ${ROOT_DIR}"
 
 command -v docker >/dev/null 2>&1 || die "未找到 docker（podman 环境请设置 alias docker=podman）"
 docker compose version >/dev/null 2>&1 || die "未找到 docker compose（需要 Compose v2）"
@@ -41,21 +50,22 @@ if [[ -n "${QUAY_USERNAME:-}" && -n "${QUAY_PASSWORD:-}" ]]; then
   printf '%s' "${QUAY_PASSWORD}" | docker login quay.io -u "${QUAY_USERNAME}" --password-stdin >/dev/null
 fi
 
-export APP_IMAGE="${IMAGE}:${TAG}"
 echo "=========================================="
-echo " 部署镜像: ${APP_IMAGE}"
+echo " 部署镜像: ${IMAGE}:${TAG}"
 echo "=========================================="
 
-info "1. 拉取镜像..."
-if ! docker compose pull app; then
+info "1. 拉取镜像 ${IMAGE}:${TAG} ..."
+if ! docker pull "${IMAGE}:${TAG}"; then
   die "拉取失败：请确认标签 ${TAG} 已由 CI 构建，且镜像仓可访问（私有仓需先 docker login quay.io）"
 fi
+# compose 文件中的镜像可能固定为 :latest，这里把所选版本标记为 latest，保证 up 时运行的就是该版本
+docker tag "${IMAGE}:${TAG}" "${IMAGE}:latest"
 
 if $MIGRATE; then
   info "2. 执行数据库迁移（幂等）..."
   docker compose run --rm app python -m app.cli init-db
 else
-  info "2. 跳过数据库迁移（如有新迁移请加 --migrate）"
+  info "2. 跳过数据库迁移（--no-migrate）"
 fi
 
 info "3. 重建并启动应用容器..."
@@ -79,4 +89,4 @@ info "5. 清理悬挂镜像（仅 dangling，不影响其它镜像）..."
 docker image prune -f >/dev/null
 
 docker compose ps
-ok "部署完成：${APP_IMAGE}"
+ok "部署完成：${IMAGE}:${TAG}"

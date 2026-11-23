@@ -10,11 +10,12 @@ import hashlib
 import logging
 import re
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
-from sqlalchemy import delete, func, literal, or_, select, true
+from sqlalchemy import delete, func, literal, or_, select, true, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -48,13 +49,16 @@ class ParsedChunk:
 
 
 def parse_markdown(path: Path, root: Path) -> list[ParsedChunk]:
+    return parse_text(path.read_text(encoding="utf-8"), path.relative_to(root).as_posix(), path.stem)
+
+
+def parse_text(text: str, source: str, default_title: str = "手动录入") -> list[ParsedChunk]:
     """按二级标题切块；front matter 支持 title / tags / scenarios。"""
-    text = path.read_text(encoding="utf-8")
     meta: dict = {}
     if m := FRONT_MATTER.match(text):
         meta = yaml.safe_load(m.group(1)) or {}
         text = text[m.end() :]
-    doc_title = meta.get("title", path.stem)
+    doc_title = meta.get("title", default_title)
     chunks = []
     for block in re.split(r"(?m)^##\s+", text):
         block = block.strip()
@@ -64,7 +68,7 @@ def parse_markdown(path: Path, root: Path) -> list[ParsedChunk]:
         if body.strip():
             chunks.append(
                 ParsedChunk(
-                    source=path.relative_to(root).as_posix(),
+                    source=source,
                     title=f"{doc_title} / {heading.strip()}",
                     content=mask_pii(body.strip()),
                     tags=list(meta.get("tags", [])),
@@ -126,6 +130,49 @@ class KnowledgeBase:
 
     async def ingest_dir(self, root: Path) -> int:
         return await self.ingest_chunks(await asyncio.to_thread(parse_dir, root))
+
+    async def create_manual(self, title: str, content: str, tags: list[str], scenario_ids: list[str]) -> int:
+        chunk = ParsedChunk(
+            source=f"manual:{uuid.uuid4().hex}",
+            title=title,
+            content=mask_pii(content),
+            tags=tags,
+            scenario_ids=scenario_ids,
+        )
+        return await self.ingest_chunks([chunk])
+
+    async def import_markdown(self, name: str, text: str) -> int:
+        """同名文件重复导入时整体替换（幂等）。"""
+        source = f"import:{name}"
+        return await self.replace_source(source, parse_text(text, source, name))
+
+    async def delete(self, chunk_id: int) -> bool:
+        async with self.session_factory() as db, db.begin():
+            res = await db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.id == chunk_id))
+        return res.rowcount > 0
+
+    async def rebuild(self) -> dict:
+        """重新加载 knowledge/ 目录；启用向量模型时为缺失向量的片段补算 embedding。"""
+        loaded = await self.ingest_dir(self.settings.knowledge_dir)
+        filled = 0
+        if self.cfg.enabled:
+            async with self.session_factory() as db:
+                rows = (
+                    await db.execute(
+                        select(KnowledgeChunk.id, KnowledgeChunk.content, KnowledgeChunk.title).where(
+                            KnowledgeChunk.embedding.is_(None)
+                        )
+                    )
+                ).all()
+            if rows:
+                vectors = await self._embed([f"{t}\n{c}" for _, c, t in rows])
+                async with self.session_factory() as db, db.begin():
+                    for (rid, _, _), vec in zip(rows, vectors, strict=True):
+                        await db.execute(
+                            update(KnowledgeChunk).where(KnowledgeChunk.id == rid).values(embedding=vec)
+                        )
+                filled = len(rows)
+        return {"loaded_from_dir": loaded, "embeddings_filled": filled}
 
     async def replace_source(self, source: str, chunks: list[ParsedChunk]) -> int:
         """按来源整体替换（如某条已发布录音的亮点话术）；chunks 为空即删除。"""

@@ -23,11 +23,12 @@ import type {
   SessionDetail,
   SessionSummary,
   StreamEvent,
+  OpsSetting,
   TrendPoint,
   UsagePage,
   User,
 } from '@/types'
-import { get, patch, post, put, rawFetch } from './http'
+import { get, patch, post, put, rawFetch, request } from './http'
 
 type Query = Record<string, string | number | null | undefined>
 
@@ -90,6 +91,15 @@ export const api = {
     usage: (q: Query) => get<UsagePage>(`/admin/usage?${qs(q)}`),
     scenarios: () => get<AdminScenario[]>('/admin/scenarios'),
     knowledge: () => get<KnowledgeItem[]>('/admin/knowledge'),
+    createKnowledge: (body: { title: string; content: string; tags: string[]; scenario_ids: string[] }) =>
+      post<{ created: number }>('/admin/knowledge', body),
+    importKnowledge: (name: string, text: string) => post<{ imported: number }>('/admin/knowledge/import', { name, text }),
+    deleteKnowledge: (id: number) => request<{ deleted: boolean }>(`/admin/knowledge/${id}`, { method: 'DELETE' }),
+    rebuildKnowledge: () => post<{ loaded_from_dir: number; embeddings_filled: number }>('/admin/knowledge/rebuild'),
+    settings: () => get<OpsSetting[]>('/admin/settings'),
+    saveSetting: (key: string, value: boolean | number | string) =>
+      request<{ key: string; value: unknown }>(`/admin/settings/${key}`, { method: 'PUT', body: JSON.stringify({ value }) }),
+    resetSetting: (key: string) => request<{ key: string; value: unknown }>(`/admin/settings/${key}`, { method: 'DELETE' }),
 
     accounts: (q: Query) => get<Paged<Account> & { pending: number }>(`/admin/accounts?${qs(q)}`),
     reviewAccount: (id: number, action: 'approve' | 'reject' | 'disable' | 'enable') =>

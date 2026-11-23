@@ -6,6 +6,7 @@ provider:
 - stub：开发联调用，ASR 返回固定文本、TTS 返回空音频
 """
 
+import logging
 import time
 from decimal import Decimal
 
@@ -14,6 +15,8 @@ import httpx
 from app.core.config import Settings
 from app.core.errors import FeatureDisabled, UpstreamError
 from app.services.llm.usage import UsageRecord, record_usage
+
+logger = logging.getLogger(__name__)
 
 
 class SpeechService:
@@ -49,6 +52,7 @@ class SpeechService:
                     data={"model": self.cfg.asr_model, "language": "zh"},
                 )
             if resp.status_code >= 400:
+                logger.error("语音识别接口失败 status=%s body=%s", resp.status_code, resp.text[:500])
                 raise UpstreamError(f"语音识别失败（{resp.status_code}）")
             text = resp.json().get("text", "").strip()
         seconds = Decimal(max(duration_ms, 0)) / 1000
@@ -81,6 +85,7 @@ class SpeechService:
                     },
                 )
             if resp.status_code >= 400:
+                logger.error("语音合成接口失败 status=%s body=%s", resp.status_code, resp.text[:500])
                 raise UpstreamError(f"语音合成失败（{resp.status_code}）")
             audio = resp.content
         record_usage(

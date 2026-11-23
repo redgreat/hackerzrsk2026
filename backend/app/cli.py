@@ -4,7 +4,7 @@ python -m app.cli init-db           执行 Alembic 迁移 + 创建 LangGraph che
 python -m app.cli ingest-knowledge  将 knowledge/*.md 导入话术知识库
 python -m app.cli check-scenarios   校验全部场景 / 评分表 / 题库 / 试卷 YAML
 python -m app.cli create-admin --userid admin --password ******   创建或重置管理员账号
-python -m app.cli import-recordings [--file data/private/x.json] [--limit N]   导入优质录音（默认经 dbmcp）
+python -m app.cli import-recordings [--limit N] < urls.txt   从标准输入导入优质录音 URL（每行一条，不落盘）
 python -m app.cli process-recordings [--limit N]   转写 + AI 分析待处理录音
 """
 
@@ -13,6 +13,7 @@ import asyncio
 import sys
 
 from app.core.config import BACKEND_DIR, get_settings
+from app.core.errors import AppError
 from app.core.logging import setup_logging
 
 
@@ -128,17 +129,15 @@ async def _create_admin(userid: str, name: str, password: str) -> None:
     await _with_services(run)
 
 
-async def _import_recordings(file: str | None, limit: int | None) -> None:
-    from pathlib import Path
-
+async def _import_recordings(text: str, limit: int | None) -> None:
     from app.services import recording_source as src
 
     async def run(settings, sf, svc):
-        if file:
-            items, source = src.load_file(Path(file), settings.recordings), "file"
-        else:
-            items, source = await src.fetch_from_dbmcp(settings.recordings, limit), "dbmcp"
-        created, skipped = await svc.import_items(items[:limit] if limit else items, source)
+        try:
+            items = src.parse_lines(text, settings.recordings)
+        except AppError as exc:
+            raise SystemExit(f"导入失败：{exc.message}") from None
+        created, skipped = await svc.import_items(items[:limit] if limit else items, "url")
         print(f"导入完成：新增 {created} 条，已存在跳过 {skipped} 条")
 
     await _with_services(run)
@@ -178,7 +177,6 @@ def main() -> None:
     parser.add_argument("--userid")
     parser.add_argument("--name", default="")
     parser.add_argument("--password")
-    parser.add_argument("--file", help="录音 JSON 文件（放 data/private/，不要提交）")
     parser.add_argument("--limit", type=int)
     args = parser.parse_args()
     cmd = args.command
@@ -191,7 +189,7 @@ def main() -> None:
             parser.error("create-admin 需要 --userid 和 --password")
         _run(_create_admin(args.userid, args.name, args.password))
     elif cmd == "import-recordings":
-        _run(_import_recordings(args.file, args.limit))
+        _run(_import_recordings(sys.stdin.read(), args.limit))
     elif cmd == "process-recordings":
         _run(_process_recordings(args.limit or 20))
     else:

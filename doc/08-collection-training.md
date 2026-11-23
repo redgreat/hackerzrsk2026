@@ -18,7 +18,7 @@
 
 ## 2. 数据来源评估：贷后优秀录音
 
-来源：dbmcp 连接 ID=51（瑟维斯贷后，MySQL）。
+来源：本地录音清单（JSON，只含录音地址等必要字段）。应用不连接任何业务库，清单由人工从业务系统导出。
 
 ```sql
 -- 优秀录音 → 催收记录（主库 recall_record_0..9 共 10 张分表；从库 sw_dhtcenter_slave 另有镜像 10 张）→ 通话记录 → 录音地址
@@ -38,7 +38,7 @@ where c.id in (select b.callId from recall_excellent_call a left join recall_rec
 - **合规**：录音含真实客户信息，**只在系统内部播放，不入仓库**；转写文本落库前做脱敏（手机号、身份证、银行卡、车牌等），
   AI 分析结果不得包含客户姓名；录音默认"未发布"，管理员审核后员工才能看到。演示视频只能用虚构/脱敏素材。
 
-导入方式：`python -m app.cli import-recordings`（经 dbmcp 查询）或 `--file data/private/recordings.json`（离线导入）。
+导入方式：`python -m app.cli import-recordings [--limit N]`，从标准输入读取 URL，每行一条：`录音URL<TAB>标题(可选)`，相对路径按 `recordings.audio_base_url` 拼接。URL 只写入 PG，服务器上不保存清单文件。
 具体字段待白名单开通后核对表结构，SQL 集中在 `app/services/recording_source.py`。
 
 ## 3. 架构
@@ -51,7 +51,7 @@ where c.id in (select b.callId from recall_excellent_call a left join recall_rec
    auth(密码/注册)  recordings  exams  sessions(复用陪练图)  training-admin
             │             │         │
             │   RecordingService     ExamService ──→ PracticeService(mode=exam，禁用提示)
-            │     ├ 来源：dbmcp / 文件
+            │     ├ 来源：文件清单
             │     ├ 转写：Paraformer（stub 可离线）
             │     └ 分析：LLMGateway(purpose=analyst) → 亮点/合规/题目
             └── PostgreSQL：users(+密码/状态/角色) recordings recording_questions exam_attempts
@@ -101,7 +101,7 @@ AUTH__REQUIRE_APPROVAL=true
 | P3 | 录音导入、转写（stub/Paraformer）、AI 分析、题目生成、发布 | 单测（解析/脱敏/角色识别）+ 集成测试 |
 | P4 | 题库/试卷、考试与自测流程、判分 | 规则单测 + 集成测试全流程 |
 | P5 | H5 页面（录音、考试、登录注册）+ 管理后台页面 | `pnpm build`（类型检查）+ 本地联调 |
-| P6 | 真实录音导入（待 dbmcp 新密钥加白名单 123.168.112.130）、Paraformer 密钥 | 人工验收 |
+| P6 | 真实录音清单导入、Paraformer 密钥 | 人工验收 |
 
 验收清单（最终由业务方确认）：
 

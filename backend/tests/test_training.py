@@ -1,4 +1,4 @@
-"""催收培训模块单测：密码、红线、判分、录音解析与脱敏、Paraformer 客户端、dbmcp 结果解析、题库加载。"""
+"""催收培训模块单测：密码、红线、判分、录音解析与脱敏、Paraformer 客户端、题库加载。"""
 
 import json
 import uuid
@@ -8,16 +8,15 @@ import pytest
 from langgraph.types import Command
 
 from app.core.config import RecordingSettings
-from app.core.errors import UpstreamError
+from app.core.errors import AppError, UpstreamError
 from app.core.security import hash_password, verify_password
 from app.graph import rules
 from app.graph.schemas import DimensionScore
 from app.services import exam_rules
 from app.services import recording_rules as rr
-from app.services.dbmcp import parse_rows
 from app.services.exams import ExamRegistry, Question
 from app.services.file_asr import FileASR, stub_result
-from app.services.recording_source import excellent_calls_sql, normalize_url
+from app.services.recording_source import normalize_url, parse_lines
 from app.services.recordings import check_answer
 
 # ---------- 账号 ----------
@@ -271,18 +270,19 @@ async def test_dashscope_subtask_failure():
 # ---------- 数据来源 ----------
 
 
-def test_parse_rows_formats():
-    assert parse_rows('{"rows": [{"a": 1}], "count": 1}') == [{"a": 1}]
-    assert parse_rows('{"columns": ["a", "b"], "rows": [[1, 2]]}') == [{"a": 1, "b": 2}]
-    assert parse_rows('[{"a": 1}]') == [{"a": 1}]
-    with pytest.raises(UpstreamError):
-        parse_rows('{"foo": 1}')
+def test_parse_url_lines():
+    from app.core.config import RecordingSettings
 
-
-def test_excellent_calls_sql_covers_all_shards():
-    sql = excellent_calls_sql(10, limit=50)
-    assert sql.count("JOIN recall_record_") == 10 and "recall_record_9" in sql
-    assert sql.count("a.deleted = 0") == 10
-    assert sql.rstrip().endswith("LIMIT 50") and "callCenterPath" in sql
+    cfg = RecordingSettings(audio_base_url="https://cc.example.com/")
+    items = parse_lines("# 注释\nrec/1.mp3\t好录音\n\nhttps://oss.example.com/2.mp3\n", cfg)
+    assert [i.audio_url for i in items] == [
+        "https://cc.example.com/rec/1.mp3",
+        "https://oss.example.com/2.mp3",
+    ]
+    assert items[0].title == "好录音" and items[0].source_key.startswith("url:")
+    with pytest.raises(AppError):
+        parse_lines("   \n# 只有注释", cfg)
+    with pytest.raises(AppError):
+        parse_lines("a b.mp3", cfg)
     assert normalize_url("rec/1.mp3", "https://cc.example.com/") == "https://cc.example.com/rec/1.mp3"
     assert normalize_url("https://oss/1.mp3", "https://cc") == "https://oss/1.mp3"

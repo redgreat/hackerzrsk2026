@@ -102,7 +102,7 @@ cd frontend && pnpm build                          # 类型检查 + 构建
 
 - **账号体系**：开放注册 + 管理员审核（`/admin/accounts`），密码登录；审核未通过不能登录
 - **优秀录音**：H5「录音」页按客户类型检索、边听边看逐句转写（点句跳听）、AI 生成的亮点话术点评与合规提醒、答题自测
-- **录音加工**：`uv run python -m app.cli import-recordings`（dbmcp 查询或本地清单）→ `process-recordings`（转写 + AI 分析 + 出题）→ 管理后台审核发布
+- **录音加工**：`uv run python -m app.cli import-recordings < urls.txt`（从标准输入导入 URL，只写 PG，应用不连业务库）→ `process-recordings`（转写 + AI 分析 + 出题）→ 管理后台审核发布
 - **题库试卷**：`exams/` 下 YAML 定义，支持选择题、听录音题、情景对练三种题型；`python -m app.cli check-scenarios` 一并校验
 - **考试与自测**：H5「考试」页支持自测（不限次、交卷给解析）与正式考试（限时、限次、对练中禁用求助、红线违规总分封顶）
 

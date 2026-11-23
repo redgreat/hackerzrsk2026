@@ -101,6 +101,7 @@ class FileASR:
                 },
             )
         if resp.status_code >= 400:
+            logger.error("百炼提交转写失败 status=%s body=%s", resp.status_code, resp.text[:500])
             raise UpstreamError(f"提交转写任务失败（{resp.status_code}）：{resp.text[:200]}")
         return resp.json()["output"]["task_id"]
 
@@ -110,6 +111,12 @@ class FileASR:
             while True:
                 resp = await client.get(f"/api/v1/tasks/{task_id}")
                 if resp.status_code >= 400:
+                    logger.error(
+                        "百炼查询任务失败 task=%s status=%s body=%s",
+                        task_id,
+                        resp.status_code,
+                        resp.text[:500],
+                    )
                     raise UpstreamError(f"查询转写任务失败（{resp.status_code}）")
                 output = resp.json()["output"]
                 status = output.get("task_status")
@@ -120,6 +127,7 @@ class FileASR:
                     result = await client.get(sub["transcription_url"])
                     return result.json()
                 if status in ("FAILED", "CANCELED", "UNKNOWN"):
+                    logger.error("百炼转写任务失败 task=%s output=%s", task_id, str(output)[:500])
                     raise UpstreamError(f"转写失败：{output.get('code')} {output.get('message', '')}".strip())
                 if time.monotonic() > deadline:
                     raise UpstreamError("转写超时，请稍后重试")

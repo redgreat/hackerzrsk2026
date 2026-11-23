@@ -401,3 +401,19 @@ export interface AttemptDetail extends AttemptSummary {
 export interface AdminAttempt extends AttemptSummary {
   user: { id: number; userid: string; name: string; department: string }
 }
+
+export interface OpsSetting {
+  key: string
+  label: string
+  group: string
+  kind: 'bool' | 'int' | 'float' | 'str' | 'choice'
+  choices: string[]
+  min: number | null
+  max: number | null
+  hint: string
+  value: boolean | number | string
+  default: boolean | number | string
+  overridden: boolean
+  updated_by: string | null
+  updated_at: string | null
+}

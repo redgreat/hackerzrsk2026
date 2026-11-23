@@ -120,7 +120,7 @@ class SeedAdminSettings(BaseModel):
 
 
 class RecordingSettings(BaseModel):
-    """优质录音：来源（dbmcp）、转写（百炼 Paraformer）。"""
+    """优质录音：本地清单导入，转写（百炼 Paraformer）。"""
 
     asr_provider: Literal["none", "stub", "dashscope"] = "none"
     dashscope_api_key: str | None = None
@@ -132,11 +132,6 @@ class RecordingSettings(BaseModel):
     poll_timeout_seconds: float = 900
     # 元 / 分钟（paraformer-v2 约 0.288 元/小时）
     asr_price_per_minute: float = 0.0048
-    dbmcp_url: str = "https://mcp.lunz.cn/mcp/sse"
-    dbmcp_key: str | None = None
-    connection_id: int = 51
-    # 主库中的分表数量（sw_dhtcenter.recall_record_0..9；从库另有镜像不计）
-    shard_count: int = 10
     # 录音地址为相对路径时拼接的前缀（如呼叫中心录音服务器地址）
     audio_base_url: str | None = None
     # AI 分析优质录音时使用的评分表
