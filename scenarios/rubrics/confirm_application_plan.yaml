@@ -1,0 +1,21 @@
+id: confirm_application_plan
+name: 困难核实与方案确认评分表
+hint_penalty: 2
+hint_penalty_max: 10
+dimensions:
+  - name: 安抚与回应
+    weight: 15
+    good: 承接客户担心白说的顾虑，让客户愿意继续说明情况
+    bad: 忽略顾虑，反复催客户报还款日期
+  - name: 拆解困难
+    weight: 25
+    good: 问清当前具体卡点与能承担的范围，允许客户暂时无法确定
+    bad: 凭空推断客户情况，或把未确定的日期当承诺
+  - name: 解释办理边界
+    weight: 25
+    good: 讲清可以提交协商申请，是否通过以专员审核为准
+    bad: 保证获批、减免或暂停其他流程，或用模糊承诺替代说明
+  - name: 当通确认行动
+    weight: 35
+    good: 说明官方入口、要填什么，确认客户愿意现在提交
+    bad: 只说之后再联系，或自行声称客户已经提交
