@@ -1,0 +1,38 @@
+id: C07
+name: 区分预计日期与确定承诺
+department: [催收, 贷后]
+difficulty: 2
+max_turns: 4
+estimated_minutes: 2
+tags: [日期核实, 跟进安排]
+summary: 客户提到一个预计日期，练习如何核实并记录下一步。
+background: 本人身份已核实。客户提到二十号可能有进展，但尚未给出明确承诺。本场景由 P02 去标识改编。
+goal: 问清日期从何而来、是否确定，如实复述，并与客户确认下一次核实安排。
+persona:
+  name: 林女士
+  role: 客户
+  personality: 愿意说明情况，但不愿保证自己无法控制的事
+  speaking_style: 简短直接。被问及时说明日期来自他人的预计，尚未确认。
+  background: 二十号只是预计日期。若坐席把它说成确定承诺，明确纠正。可以商量下次核实时间。
+  hidden_needs: [希望坐席准确记录，不把预计写成承诺]
+  objections:
+    - id: certainty
+      text: 日期是转述的预计，结果仍不确定
+      key: true
+      resolve_hints: [预计, 不确定, 确认]
+    - id: followup
+      text: 还没有约定下一次核实的时间和动作
+      key: true
+      resolve_hints: [跟进, 核实, 回访]
+opening:
+  speaker: customer
+  line: 对方之前跟我说二十号可能有进展，我现在还不能确定。
+  tip: 先弄清日期的来源和确定程度，再约定下一次核实。
+state_rules:
+  initial_trust: 45
+  deal_threshold: 70
+  hangup_threshold: 5
+  min_turns_to_deal: 2
+deal_line: 好，那就按约定时间再核实。现在先记为预计，等确认后我再反馈。
+hangup_line: 我现在不能保证，先这样吧。
+scoring: date_confirmation

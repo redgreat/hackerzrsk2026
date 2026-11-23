@@ -1,0 +1,17 @@
+id: date_confirmation
+name: 日期核实短练习评分表
+hint_penalty: 2
+hint_penalty_max: 10
+dimensions:
+  - name: 澄清日期来源与确定性
+    weight: 35
+    good: 主动问清是谁提出日期以及进展是否已确认
+    bad: 听到日期便当作确定结果，缺少澄清
+  - name: 如实复述
+    weight: 35
+    good: 明确复述该日期仍是预计，请客户确认理解是否正确
+    bad: 将预计改记为确定承诺或诱导客户保证
+  - name: 明确跟进
+    weight: 30
+    good: 与客户协商可执行的核实时间、方式及反馈事项
+    bad: 只说之后再联系，或者擅自承诺结果
