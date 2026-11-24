@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { api } from '@/api'
 import { useRecorder } from '@/composables/useRecorder'
-import { useSpeaker } from '@/composables/useSpeaker'
 import type { Message, SessionDetail } from '@/types'
 import { closeToast, showConfirmDialog, showFailToast, showLoadingToast, showToast } from 'vant'
-import { nextTick, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
@@ -22,10 +21,27 @@ const voiceMode = ref(false)
 const asrEnabled = ref(false)
 
 const listEl = ref<HTMLElement | null>(null)
+const viewportHeight = ref<number>()
+const viewportTop = ref(0)
 
 const recorder = useRecorder()
-const speaker = useSpeaker()
 const turn = ref(0)
+
+function syncViewport() {
+  const viewport = window.visualViewport
+  if (!viewport) return
+  const list = listEl.value
+  const atBottom = list && list.scrollHeight - list.scrollTop - list.clientHeight < 24
+  viewportHeight.value = viewport.height
+  viewportTop.value = viewport.offsetTop
+  if (atBottom) void nextTick(() => { list.scrollTop = list.scrollHeight })
+}
+
+function onInputEnter(event: KeyboardEvent) {
+  if (event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  void send(input.value)
+}
 
 async function scrollBottom() {
   await nextTick()
@@ -38,6 +54,9 @@ function push(role: Message['role'], content: string) {
 }
 
 onMounted(async () => {
+  syncViewport()
+  window.visualViewport?.addEventListener('resize', syncViewport)
+  window.visualViewport?.addEventListener('scroll', syncViewport)
   try {
     const [s, sc] = await Promise.all([api.session(sid), api.speechConfig()])
     session.value = s
@@ -48,11 +67,14 @@ onMounted(async () => {
     asrEnabled.value = sc.asr_enabled && recorder.supported
     voiceMode.value = asrEnabled.value
     scrollBottom()
-    const last = s.messages.at(-1)
-    if (s.messages.length === 1 && last?.role === 'customer') speaker.speak(last.content, sid)
   } catch (e) {
     showFailToast((e as Error).message)
   }
+})
+
+onBeforeUnmount(() => {
+  window.visualViewport?.removeEventListener('resize', syncViewport)
+  window.visualViewport?.removeEventListener('scroll', syncViewport)
 })
 
 async function send(text: string) {
@@ -86,7 +108,6 @@ async function send(text: string) {
     if (streaming.value) {
       const reply = streaming.value
       push('customer', reply)
-      speaker.speak(reply, sid)
     }
   } catch (e) {
     retryReport.value = ending.value
@@ -111,7 +132,6 @@ function showResult() {
 
 async function onPressStart() {
   if (busy.value || retryReport.value) return
-  speaker.stop()
   try {
     await recorder.start()
   } catch {
@@ -157,7 +177,6 @@ async function endPractice() {
       return
     }
   }
-  speaker.stop()
   ending.value = true
   try {
     await api.end(sid)
@@ -171,14 +190,16 @@ async function endPractice() {
 </script>
 
 <template>
-  <div class="practice">
+  <div class="practice" :style="{ height: viewportHeight ? `${viewportHeight}px` : undefined, top: `${viewportTop}px` }">
     <van-nav-bar
       :title="session?.persona ? `${session.persona.name} · ${session.persona.role}` : '对练中'"
       left-arrow
       @click-left="session?.exam_attempt_id ? router.push(`/attempt/${session.exam_attempt_id}`) : router.push('/')"
     >
       <template #right>
-        <van-icon :name="speaker.enabled.value ? 'volume-o' : 'volume'" size="20" @click="speaker.toggle" />
+        <van-button v-if="session" size="mini" plain :disabled="busy || ending" @click="endPractice">
+          {{ retryReport ? '重试评分' : '结束对练' }}
+        </van-button>
       </template>
     </van-nav-bar>
 
@@ -211,7 +232,6 @@ async function endPractice() {
         <span class="muted">第 {{ turn }} 轮<van-tag v-if="session?.mode === 'exam'" type="danger" style="margin-left: 6px">考试</van-tag></span>
         <div>
           <van-button v-if="session?.mode !== 'exam'" size="small" round icon="bulb-o" :disabled="busy || retryReport" @click="askHint">求助</van-button>
-          <van-button size="small" round type="danger" plain :disabled="busy" @click="endPractice">{{ retryReport ? '重试评分' : '结束' }}</van-button>
         </div>
       </div>
       <div v-if="!retryReport" class="input-row">
@@ -241,12 +261,12 @@ async function endPractice() {
             v-model="input"
             class="text"
             rows="1"
-            autosize
+            :autosize="{ maxHeight: 84 }"
             type="textarea"
             maxlength="500"
             placeholder="输入你要说的话"
             :disabled="busy"
-            @keydown.enter.exact.prevent="send(input)"
+            @keydown.enter.exact="onInputEnter"
           />
           <van-button type="primary" round size="small" :disabled="busy || !input.trim()" @click="send(input)">
             发送
@@ -265,12 +285,19 @@ async function endPractice() {
 
 <style scoped>
 .practice {
+  position: fixed;
+  inset-inline: 0;
+  width: 100%;
+  max-width: 480px;
+  margin-inline: auto;
   display: flex;
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
 }
 .goal {
+  max-height: 24%;
+  overflow-y: auto;
   margin: 8px 12px 0;
   padding: 10px 12px;
   background: #e8f1ff;
@@ -284,6 +311,7 @@ async function endPractice() {
 }
 .list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 12px;
 }
