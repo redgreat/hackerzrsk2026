@@ -34,17 +34,11 @@ async function add() {
     inputErrorMessage: '请输入合法的 http(s) 地址',
   })
   await api.admin.addRecording(url.trim(), '')
-  ElMessage.success('已添加，请在详情页执行转写分析')
+  ElMessage.success('已添加，请在详情页关联已有 AI 转写')
   load()
 }
 
-async function process(r: RecordingCard, force = false) {
-  await api.admin.processRecording(r.id, force)
-  ElMessage.info('处理中，稍后刷新查看进度')
-}
-
 const st = (s: RecordingStatus) => RECORDING_STATUS[s] ?? { label: s, type: 'info' as const }
-const busy = (s: RecordingStatus) => s === 'transcribing' || s === 'analyzing'
 </script>
 
 <template>
@@ -73,16 +67,12 @@ const busy = (s: RecordingStatus) => s === 'transcribing' || s === 'analyzing'
         <el-tooltip v-if="row.error" :content="row.error"><el-icon style="margin-left: 4px"><Warning /></el-icon></el-tooltip>
       </template>
     </el-table-column>
-    <el-table-column label="题目" width="90">
-      <template #default="{ row }"><el-tag v-if="row.pending_questions" type="warning">待审 {{ row.pending_questions }}</el-tag></template>
-    </el-table-column>
     <el-table-column label="发布" width="70">
       <template #default="{ row }"><el-tag v-if="row.published" type="success">已发布</el-tag></template>
     </el-table-column>
     <el-table-column prop="play_count" label="播放" width="70" />
     <el-table-column label="操作" width="260">
       <template #default="{ row }">
-        <el-button size="small" :disabled="busy(row.status)" @click="process(row as RecordingCard, true)">{{ row.status === 'imported' ? '转写分析' : '重新处理' }}</el-button>
         <el-button size="small" @click="router.push(`/admin/recordings/${row.id}`)">详情</el-button>
       </template>
     </el-table-column>

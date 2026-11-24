@@ -1,166 +1,177 @@
 <script setup lang="ts">
 import { api } from '@/api'
-import type { ChoiceQuestion, RecordingDetail } from '@/types'
-import { formatDuration, QUESTION_TYPE, RECORDING_STATUS } from '@/utils/labels'
-import { ElMessage } from 'element-plus'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import type { RecordingDetail, ScenarioCard } from '@/types'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-const route = useRoute()
 const router = useRouter()
-const rid = Number(route.params.id)
-const d = ref<RecordingDetail | null>(null)
-let timer: number | undefined
+const rid = Number(useRoute().params.id)
+const detail = ref<RecordingDetail>()
+const transcripts = ref<{ id: number; name: string }[]>([])
+const scenarios = ref<ScenarioCard[]>([])
+const snapshotId = ref<number>()
+const extractedIds = ref<string[]>([])
+const note = ref('')
+const first = ref<number>()
+const last = ref<number>()
+const working = ref(false)
 
-async function load() {
-  d.value = await api.admin.recording(rid)
-}
 onMounted(async () => {
-  await load()
-  timer = window.setInterval(async () => {
-    if (d.value && (d.value.status === 'transcribing' || d.value.status === 'analyzing')) await load()
-  }, 3000)
-})
-onBeforeUnmount(() => window.clearInterval(timer))
-
-async function process(force = false) {
-  await api.admin.processRecording(rid, force)
-  ElMessage.info('已开始处理')
-  load()
-}
-
-async function togglePublish(v: string | number | boolean) {
-  const pub = Boolean(v)
   try {
-    await api.admin.updateRecording(rid, { published: pub })
-    ElMessage.success(pub ? '已发布' : '已取消发布')
-  } catch (e) {
-    ElMessage.error((e as Error).message)
+    const [recording, sources, available] = await Promise.all([
+      api.admin.recording(rid), api.admin.recordingTranscripts(), api.scenarios(),
+    ])
+    detail.value = recording
+    transcripts.value = sources
+    scenarios.value = available
+    snapshotId.value = recording.transcript_snapshot_id ?? undefined
+    extractedIds.value = (recording.practice_candidates ?? [])
+      .filter((item) => !item.yaml && item.status !== 'archived').map((item) => item.id)
+    note.value = recording.learning_note
+  } catch (error) {
+    ElMessage.error((error as Error).message)
   }
-  load()
+})
+
+async function change(action: () => Promise<RecordingDetail>) {
+  if (working.value) return
+  working.value = true
+  try {
+    detail.value = await action()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    working.value = false
+  }
 }
 
-async function reviewQuestion(q: ChoiceQuestion, status: 'approved' | 'rejected') {
-  await api.admin.updateQuestion(q.id, { status })
-  load()
+async function generate() {
+  if (!first.value || !last.value) return
+  const start = first.value
+  const end = last.value
+  try {
+    await ElMessageBox.confirm('请确认所选片段已核对并完成去标识处理，然后提交给 AI 生成练习。', '生成练习')
+  } catch {
+    return
+  }
+  await change(() => api.admin.generateRecordingPractices(rid, start, end))
+}
+
+async function togglePublish() {
+  const published = !detail.value?.published
+  try {
+    await ElMessageBox.confirm(
+      published ? '确认音频可以向员工展示。此次发布会同时公开所有未归档的练习。' : '撤销后员工无法开始或继续关联练习，仍可查看已有成绩。',
+      published ? '发布录音与练习' : '撤销发布',
+    )
+  } catch {
+    return
+  }
+  await change(() => api.admin.updateRecording(rid, { published }))
+}
+
+async function review(id: string, status: 'approved' | 'archived') {
+  await change(() => api.admin.reviewRecordingPractice(rid, id, status))
+  extractedIds.value = (detail.value?.practice_candidates ?? [])
+    .filter((item) => !item.yaml && item.status !== 'archived').map((item) => item.id)
+}
+
+function downloadYaml(id: string, yaml: string) {
+  const url = URL.createObjectURL(new Blob([yaml], { type: 'application/yaml' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = id + '.yaml'
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 </script>
 
 <template>
-  <div v-if="d">
-    <el-page-header style="margin-bottom: 12px" @back="router.push('/admin/recordings')">
-      <template #content>录音 #{{ d.id }} {{ d.title }}</template>
+  <div v-if="detail" class="recording-admin">
+    <el-page-header @back="router.push('/admin/recordings')">
+      <template #content>{{ detail.title }}</template>
+      <template #extra>
+        <el-button :type="detail.published ? 'default' : 'primary'" :disabled="working" @click="togglePublish">
+          {{ detail.published ? '撤销发布' : '发布录音与练习' }}
+        </el-button>
+      </template>
     </el-page-header>
 
-    <el-descriptions :column="3" border size="small">
-      <el-descriptions-item label="状态">
-        <el-tag :type="RECORDING_STATUS[d.status]?.type">{{ RECORDING_STATUS[d.status]?.label }}</el-tag>
-        <span v-if="d.error" style="color: var(--el-color-danger); margin-left: 8px">{{ d.error }}</span>
-      </el-descriptions-item>
-      <el-descriptions-item label="客户类型">{{ d.customer_type || '—' }}</el-descriptions-item>
-      <el-descriptions-item label="结果">{{ d.analysis?.outcome || '—' }}</el-descriptions-item>
-      <el-descriptions-item label="时长">{{ formatDuration(d.duration_seconds) }}</el-descriptions-item>
-      <el-descriptions-item label="播放次数">{{ d.play_count }}</el-descriptions-item>
-      <el-descriptions-item label="来源">{{ d.source_key }}</el-descriptions-item>
-      <el-descriptions-item label="发布">
-        <el-switch :model-value="d.published" :disabled="d.status !== 'ready'" @change="togglePublish" />
-        <span v-if="d.status !== 'ready'" style="margin-left: 8px; color: #909399">处理完成后才可发布</span>
-      </el-descriptions-item>
-      <el-descriptions-item label="操作" :span="2">
-        <el-button size="small" type="primary" :disabled="d.status === 'transcribing' || d.status === 'analyzing'" @click="process(true)">转写 + 分析</el-button>
-      </el-descriptions-item>
-    </el-descriptions>
+    <el-card shadow="never">
+      <template #header>录音和学习提示</template>
+      <audio :src="detail.audio_url" controls preload="none" />
+      <el-form label-position="top">
+        <el-form-item label="员工端学习提示">
+          <el-input v-model="note" type="textarea" :rows="3" maxlength="600" />
+        </el-form-item>
+        <el-form-item label="关联现有练习">
+          <el-select v-model="extractedIds" multiple filterable :multiple-limit="20">
+            <el-option
+              v-for="scenario in scenarios"
+              :key="scenario.id"
+              :value="scenario.id"
+              :label="scenario.id + ' · ' + scenario.name"
+            />
+            <el-option
+              v-for="item in detail.practice_candidates?.filter((item) => !item.yaml && !scenarios.some((scene) => scene.id === item.id))"
+              :key="item.id"
+              :value="item.id"
+              :label="item.id + ' · ' + item.name"
+            />
+          </el-select>
+        </el-form-item>
+        <el-button :disabled="working" @click="change(() => api.admin.updateRecording(rid, { learning_note: note, extracted_scenario_ids: extractedIds }))">保存学习内容</el-button>
+      </el-form>
+    </el-card>
 
-    <audio v-if="d.audio_url" :src="d.audio_url" controls style="width: 100%; margin: 12px 0" />
+    <el-card shadow="never">
+      <template #header>已有 AI 转写</template>
+      <div class="actions">
+        <el-select v-model="snapshotId" filterable placeholder="选择已导入的 AI 转写">
+          <el-option v-for="source in transcripts" :key="source.id" :value="source.id" :label="source.name" />
+        </el-select>
+        <el-button :disabled="working || !snapshotId" @click="change(() => api.admin.updateRecording(rid, { transcript_snapshot_id: snapshotId }))">关联转写</el-button>
+      </div>
+      <div v-if="detail.source_transcript?.length" class="transcript">
+        <p v-for="row in detail.source_transcript" :key="row.seq"><b>{{ row.seq }} · 声道 {{ row.channel }}</b> {{ row.text }}</p>
+      </div>
+      <el-empty v-else description="尚未关联转写" :image-size="55" />
+      <div class="actions range">
+        <el-input-number v-model="first" :min="1" aria-label="开始片段编号" placeholder="起始编号" />
+        <span>至</span>
+        <el-input-number v-model="last" :min="1" aria-label="结束片段编号" placeholder="结束编号" />
+        <el-button type="primary" :loading="working" :disabled="!detail.transcript_snapshot_id || !first || !last" @click="generate">AI 生成练习</el-button>
+      </div>
+    </el-card>
 
-    <el-row :gutter="16">
-      <el-col :span="12">
-        <h3>转写文本（已脱敏）</h3>
-        <div class="transcript">
-          <div v-for="(t, i) in d.transcript" :key="i" class="line" :class="t.speaker">
-            <b>{{ i }} {{ t.speaker === 'agent' ? '坐席' : '客户' }}</b> {{ t.text }}
-          </div>
-          <el-empty v-if="!d.transcript.length" description="尚未转写" :image-size="60" />
+    <el-card shadow="never">
+      <template #header>提取练习</template>
+      <el-empty v-if="!detail.practice_candidates?.length" description="暂无提取练习" :image-size="55" />
+      <div v-for="item in detail.practice_candidates" :key="item.id" class="candidate">
+        <div class="actions">
+          <strong>{{ item.id }} · {{ item.name }}</strong>
+          <el-tag>{{ { pending: '待审核', approved: '可发布', archived: '已归档' }[item.status] }}</el-tag>
+          <el-button v-if="item.status !== 'approved'" size="small" :disabled="working" @click="review(item.id, 'approved')">设为可用</el-button>
+          <el-button v-if="item.status !== 'archived'" size="small" :disabled="working" @click="review(item.id, 'archived')">归档</el-button>
+          <el-button v-if="item.yaml" size="small" @click="downloadYaml(item.id, item.yaml)">下载 YAML</el-button>
         </div>
-      </el-col>
-      <el-col :span="12">
-        <template v-if="d.analysis">
-          <h3>AI 分析</h3>
-          <p>{{ d.analysis.summary }}</p>
-          <p><el-tag v-for="t in d.tags" :key="t" size="small" style="margin-right: 4px">{{ t }}</el-tag></p>
-          <h4>亮点话术</h4>
-          <div v-for="h in d.analysis.highlights" :key="h.index" class="hl">
-            <el-tag size="small" type="success">{{ h.technique }}</el-tag>
-            「{{ d.transcript[h.index]?.text }}」<span class="muted">— {{ h.why }}</span>
-          </div>
-          <h4>新人学习要点</h4>
-          <div v-for="p in d.analysis.learning_points" :key="p">· {{ p }}</div>
-          <h4>合规问题</h4>
-          <div v-for="i in d.analysis.compliance_issues" :key="i" style="color: var(--el-color-danger)">· {{ i }}</div>
-          <div v-if="!d.analysis.compliance_issues.length" class="muted">无</div>
-        </template>
-
-        <h3 style="margin-top: 16px">AI 生成题目（审核后员工可见）</h3>
-        <div v-for="q in d.questions" :key="q.id" class="q">
-          <div>
-            <el-tag size="small">{{ QUESTION_TYPE[q.type] }}</el-tag> {{ q.stem }}
-            <el-tag :type="q.status === 'approved' ? 'success' : q.status === 'rejected' ? 'danger' : 'warning'" size="small" style="margin-left: 6px">
-              {{ { pending: '待审核', approved: '已通过', rejected: '已驳回' }[q.status ?? 'pending'] }}
-            </el-tag>
-          </div>
-          <div class="opts">
-            <span v-for="(o, i) in q.options" :key="i" :class="{ ans: q.answer?.includes(i) }">{{ o }}</span>
-          </div>
-          <div class="muted">{{ q.explanation }}</div>
-          <el-button v-if="q.status !== 'approved'" size="small" type="success" @click="reviewQuestion(q, 'approved')">通过</el-button>
-          <el-button v-if="q.status !== 'rejected'" size="small" type="danger" plain @click="reviewQuestion(q, 'rejected')">驳回</el-button>
-        </div>
-        <el-empty v-if="!d.questions.length" description="暂无题目" :image-size="60" />
-      </el-col>
-    </el-row>
+        <details v-if="item.yaml">
+          <summary>查看 YAML</summary>
+          <pre>{{ item.yaml }}</pre>
+        </details>
+      </div>
+    </el-card>
   </div>
 </template>
 
 <style scoped>
-.transcript {
-  max-height: 70vh;
-  overflow: auto;
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
-  padding: 8px;
-}
-.line {
-  padding: 4px 6px;
-  border-bottom: 1px solid #f5f7fa;
-  font-size: 13px;
-}
-.line b {
-  color: #409eff;
-  margin-right: 6px;
-}
-.line.customer b {
-  color: #e6a23c;
-}
-.hl {
-  padding: 4px 0;
-  font-size: 13px;
-}
-.muted {
-  color: #909399;
-}
-.q {
-  padding: 8px;
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
-  margin-bottom: 8px;
-  font-size: 13px;
-}
-.opts span {
-  margin-right: 10px;
-  color: #606266;
-}
-.opts .ans {
-  color: #67c23a;
-  font-weight: 600;
-}
+.recording-admin { display: grid; gap: 16px; }
+audio { display: block; width: 100%; margin-bottom: 16px; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.actions .el-select { width: min(420px, 100%); }
+.range { margin-top: 12px; }
+.transcript { max-height: 300px; overflow-y: auto; margin-top: 12px; }
+.candidate + .candidate { border-top: 1px solid #e4e7ed; margin-top: 12px; padding-top: 12px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f5f7fa; padding: 12px; }
 </style>

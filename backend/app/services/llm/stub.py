@@ -184,6 +184,27 @@ class StubChatModel(BaseChatModel):
             case "hint":
                 return _stub_hint()
             case "analyst":
+                if '"title": "GeneratedPractices"' in system:
+                    return json.dumps(
+                        {
+                            "scenarios": [
+                                {
+                                    "id": "draft",
+                                    "name": "核对当前还款困难",
+                                    "background": "你负责跟进还款，客户提出当前有困难。",
+                                    "goal": "问清客户困难并确认下一步。",
+                                    "persona": {
+                                        "name": "周先生",
+                                        "role": "客户",
+                                        "personality": "愿意沟通",
+                                        "speaking_style": "简短直接",
+                                    },
+                                    "scoring": "collection_default",
+                                }
+                            ],
+                        },
+                        ensure_ascii=False,
+                    )
                 return json.dumps(_stub_analyst(system, user), ensure_ascii=False)
             case _:
                 return _stub_customer(system)

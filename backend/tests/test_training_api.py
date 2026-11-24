@@ -24,7 +24,6 @@ def train_settings(tmp_path_factory) -> Settings:
         app_env="test",
         database_url=TEST_URL,
         llm={"provider": "stub"},
-        recordings={"asr_provider": "stub"},
         admin_userids=["ADMIN1"],
         frontend_dist=tmp_path_factory.mktemp("nodist"),
     )
@@ -136,83 +135,96 @@ async def test_register_review_login(client):
     assert (await client.get("/api/auth/me", headers=_h(token))).json()["is_admin"]
 
 
-async def _wait_ready(client, admin, rid: int) -> dict:
-    for _ in range(50):
-        d = (await client.get(f"/api/admin/recordings/{rid}", headers=admin)).json()
-        if d["status"] in ("ready", "failed"):
-            return d
-        await asyncio.sleep(0.1)
-    raise AssertionError("录音处理超时")
-
-
-async def test_recording_pipeline_and_learning(client):
+async def test_publish_recording_with_reviewed_learning_content(client):
     admin = await _admin(client)
-    user = await _register_and_approve(client, admin, "N100")
-
-    r = await client.post(
+    user = await _register_and_approve(client, admin, "N101")
+    await client.post(
         "/api/admin/recordings",
-        json={"audio_url": "https://oss.example.com/a.mp3", "title": ""},
+        json={"audio_url": "https://oss.example.com/learning.mp3", "title": "学习录音"},
         headers=admin,
     )
-    assert r.json() == {"created": 1}
-    rid = (await client.get("/api/admin/recordings", headers=admin)).json()["items"][0]["id"]
-
-    # 未处理不能发布；员工看不到
-    r = await client.patch(f"/api/admin/recordings/{rid}", json={"published": True}, headers=admin)
-    assert r.status_code == 400
-    assert (await client.get("/api/recordings", headers=user)).json()["total"] == 0
-
-    await client.post(f"/api/admin/recordings/{rid}/process", json={}, headers=admin)
-    d = await _wait_ready(client, admin, rid)
-    assert d["status"] == "ready", d["error"]
-    assert d["transcript"][0]["speaker"] == "agent"
-    full_text = "".join(t["text"] for t in d["transcript"])
-    assert "13812345678" not in full_text and "建国" not in full_text
-    assert d["analysis"]["highlights"] and d["customer_type"] == "忘记还款"
-    assert d["analysis"]["related_scenario_ids"] == ["C01"]
-    assert len(d["questions"]) == 2 and all(q["status"] == "pending" for q in d["questions"])
-
-    q1, q2 = d["questions"]
-    r = await client.patch(
-        f"/api/admin/recording-questions/{q1['id']}", json={"status": "approved"}, headers=admin
-    )
-    assert r.json()["status"] == "approved"
-    r = await client.patch(f"/api/admin/recording-questions/{q2['id']}", json={"answer": [5]}, headers=admin)
-    assert r.status_code == 400
-
-    r = await client.patch(
-        f"/api/admin/recordings/{rid}", json={"published": True, "title": "首逾提醒示范"}, headers=admin
-    )
-    assert r.json()["published"] and r.json()["title"] == "首逾提醒示范"
-
-    lst = (await client.get("/api/recordings", headers=user)).json()
-    assert lst["total"] == 1 and lst["customer_types"] == [{"name": "忘记还款", "count": 1}]
-    detail = (await client.get(f"/api/recordings/{rid}", headers=user)).json()
-    assert detail["audio_url"] and detail["related_scenarios"][0]["id"] == "C01"
-    assert [q["id"] for q in detail["questions"]] == [q1["id"]]
-    assert "answer" not in detail["questions"][0]
-
-    r = await client.post(
-        f"/api/recordings/{rid}/questions/{q1['id']}/check", json={"answer": [1]}, headers=user
-    )
-    assert r.json()["correct"] and r.json()["explanation"]
-    r = await client.post(
-        f"/api/recordings/{rid}/questions/{q2['id']}/check", json={"answer": [0]}, headers=user
-    )
-    assert r.status_code == 404  # 未审核题目不可作答
-    await client.post(f"/api/recordings/{rid}/played", headers=user)
-
-    # 发布后亮点话术进入知识库；取消发布即移除
-    kn = (await client.get("/api/admin/knowledge", headers=admin)).json()
-    assert any(k["source"] == f"recording:{rid}" for k in kn)
-    await client.patch(f"/api/admin/recordings/{rid}", json={"published": False}, headers=admin)
-    kn = (await client.get("/api/admin/knowledge", headers=admin)).json()
-    assert not any(k["source"] == f"recording:{rid}" for k in kn)
+    rows = (await client.get("/api/admin/recordings?q=学习录音", headers=admin)).json()["items"]
+    rid = rows[0]["id"]
+    path = f"/api/admin/recordings/{rid}"
+    fields = {"extracted_scenario_ids": ["C08", "C08"], "learning_note": "留意如何确认当通行动。"}
+    assert (await client.patch(path, json=fields, headers=user)).status_code == 403
+    assert (await client.patch(path, json=fields, headers=admin)).status_code == 200
     assert (await client.get(f"/api/recordings/{rid}", headers=user)).status_code == 404
-    await client.patch(f"/api/admin/recordings/{rid}", json={"published": True}, headers=admin)
 
-    usage = (await client.get("/api/admin/usage?purpose=analyst", headers=admin)).json()
-    assert usage["total"] >= 1
+    response = await client.patch(path, json={"published": True}, headers=admin)
+    assert response.status_code == 200
+    recordings = (await client.get("/api/recordings?q=学习录音", headers=user)).json()
+    detail = (await client.get(f"/api/recordings/{rid}", headers=user)).json()
+    assert detail["learning_note"] == fields["learning_note"]
+    assert [scenario["id"] for scenario in detail["extracted_scenarios"]] == ["C08"]
+    assert recordings["items"][0]["extracted_scenarios"] == detail["extracted_scenarios"]
+    assert (await client.get("/api/scenarios/C08", headers=user)).status_code == 200
+
+
+async def test_recording_yaml_review_and_withdrawal(client):
+    from uuid import uuid4
+
+    from app.db.models import TranscriptSnapshot
+
+    container = client._transport.app.state.container
+    async with container.session_factory() as db, db.begin():
+        snapshot = TranscriptSnapshot(
+            source_key=f"recording-workflow-test:{uuid4()}",
+            source_hash="a" * 64,
+            source_file="测试录音",
+            source_labels="还款困难",
+            segments=[{"seq": 1, "channel": 1, "text": "客户：我现在有还款困难。"}],
+            speaker_mapping={"1": "客户"},
+            speaker_mapping_status="confirmed",
+            time_unit="ms",
+        )
+        db.add(snapshot)
+        await db.flush()
+        snapshot_id = snapshot.id
+    admin = await _admin(client)
+    user = await _register_and_approve(client, admin, "N102")
+    await client.post(
+        "/api/admin/recordings",
+        headers=admin,
+        json={"audio_url": "https://oss.example.com/workflow.mp3", "title": "生成场景的测试录音"},
+    )
+    rows = (await client.get("/api/admin/recordings?q=生成场景", headers=admin)).json()["items"]
+    rid = rows[0]["id"]
+    route = f"/api/admin/recordings/{rid}"
+    assert (await client.post(f"{route}/process", headers=admin, json={})).status_code == 404
+    assert (
+        await client.patch(
+            route, headers=admin, json={"transcript_snapshot_id": snapshot_id, "learning_note": "问清困难。"}
+        )
+    ).status_code == 200
+
+    async def generate():
+        response = await client.post(f"{route}/practices", headers=admin, json={"first": 1, "last": 1})
+        assert response.status_code == 200, response.text
+        return response.json()["practice_candidates"][-1]
+
+    accepted = await generate()
+    archived = await generate()
+    assert accepted["status"] == "pending" and "scoring:" in accepted["yaml"]
+    sid = accepted["id"]
+    assert (
+        await client.patch(f"{route}/practices/{archived['id']}", headers=admin, json={"status": "archived"})
+    ).status_code == 200
+    assert (await client.get(f"/api/scenarios/{sid}", headers=user)).status_code == 404
+    assert (await client.patch(route, headers=admin, json={"published": True})).status_code == 200
+    detail = (await client.get(f"/api/recordings/{rid}", headers=user)).json()
+    assert [item["id"] for item in detail["extracted_scenarios"]] == [sid]
+    assert "source_transcript" not in detail and "practice_candidates" not in detail
+    assert (await client.get(f"/api/scenarios/{archived['id']}", headers=user)).status_code == 404
+    completed = (await client.post("/api/sessions", headers=user, json={"scenario_id": sid})).json()["id"]
+    active = (await client.post("/api/sessions", headers=user, json={"scenario_id": sid})).json()["id"]
+    assert (await client.post(f"/api/sessions/{completed}/end", headers=user)).status_code == 200
+    assert (await client.patch(route, headers=admin, json={"published": False})).status_code == 200
+    assert (await client.post("/api/sessions", headers=user, json={"scenario_id": sid})).status_code == 404
+    assert (
+        await client.post(f"/api/sessions/{active}/messages", headers=user, json={"text": "您好"})
+    ).status_code == 409
+    assert (await client.get(f"/api/sessions/{completed}/report", headers=user)).status_code == 200
 
 
 async def _send(client, h, sid, text_: str) -> list[dict]:

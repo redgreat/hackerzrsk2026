@@ -322,9 +322,14 @@ export interface RecordingDetail extends RecordingCard {
   questions: ChoiceQuestion[]
   related_scenarios?: { id: string; name: string }[]
   source_key?: string
+  learning_note: string
+  extracted_scenarios: { id: string; name: string }[]
+  transcript_snapshot_id?: number | null
+  source_transcript?: { seq: number; channel: number; text: string }[]
+  practice_candidates?: { id: string; name: string; status: 'pending' | 'approved' | 'archived'; yaml?: string }[]
 }
 
-export interface RecordingPage extends Paged<RecordingCard> {
+export interface RecordingPage extends Paged<RecordingCard & Pick<RecordingDetail, 'extracted_scenarios'>> {
   customer_types: { name: string; count: number }[]
 }
 

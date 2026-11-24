@@ -22,10 +22,18 @@ class RecordingPatch(BaseModel):
     customer_type: str | None = Field(None, max_length=32)
     tags: list[str] | None = Field(None, max_length=8)
     published: bool | None = None
+    extracted_scenario_ids: list[str] | None = Field(None, max_length=20)
+    learning_note: str | None = Field(None, max_length=600)
+    transcript_snapshot_id: int | None = Field(None, ge=1)
 
 
-class ProcessIn(BaseModel):
-    force: bool = False
+class GeneratePracticesIn(BaseModel):
+    first: int = Field(ge=1)
+    last: int = Field(ge=1)
+
+
+class ReviewPracticeIn(BaseModel):
+    status: Literal["approved", "archived"]
 
 
 class QuestionPatch(BaseModel):
@@ -69,11 +77,19 @@ async def patch_recording(rid: int, body: RecordingPatch, c: ContainerDep, _: Ad
     return await c.recordings.update(rid, **body.model_dump())
 
 
-@router.post("/recordings/{rid}/process")
-async def process_recording(rid: int, body: ProcessIn, c: ContainerDep, admin: AdminDep) -> dict:
-    """后台执行转写 + AI 分析，前端轮询详情查看进度。"""
-    c.recordings.process_in_background(rid, body.force, admin.id)
-    return {"accepted": True}
+@router.get("/recording-transcripts")
+async def recording_transcripts(c: ContainerDep, _: AdminDep) -> list[dict]:
+    return await c.recordings.list_transcripts()
+
+
+@router.post("/recordings/{rid}/practices")
+async def generate_practices(rid: int, body: GeneratePracticesIn, c: ContainerDep, admin: AdminDep) -> dict:
+    return await c.recordings.generate_practices(rid, body.first, body.last, admin.id)
+
+
+@router.patch("/recordings/{rid}/practices/{sid}")
+async def review_practice(rid: int, sid: str, body: ReviewPracticeIn, c: ContainerDep, _: AdminDep) -> dict:
+    return await c.recordings.review_practice(rid, sid, body.status)
 
 
 @router.patch("/recording-questions/{qid}")

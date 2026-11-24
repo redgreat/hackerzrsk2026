@@ -8,6 +8,7 @@ import type {
   ChoiceQuestion,
   PaperCard,
   RecordingDetail,
+  RecordingPage,
   AdminScenario,
   AdminSession,
   AdminSessionDetail,
@@ -99,9 +100,13 @@ export const api = {
     recording: (id: number | string) => get<RecordingDetail>(`/admin/recordings/${id}`),
     updateRecording: (
       id: number,
-      body: { title?: string; customer_type?: string; tags?: string[]; published?: boolean },
+      body: { title?: string; customer_type?: string; tags?: string[]; published?: boolean; extracted_scenario_ids?: string[]; learning_note?: string; transcript_snapshot_id?: number },
     ) => patch<RecordingDetail>(`/admin/recordings/${id}`, body),
-    processRecording: (id: number, force = false) => post<{ accepted: boolean }>(`/admin/recordings/${id}/process`, { force }),
+    recordingTranscripts: () => get<{ id: number; name: string }[]>('/admin/recording-transcripts'),
+    generateRecordingPractices: (id: number, first: number, last: number) =>
+      post<RecordingDetail>(`/admin/recordings/${id}/practices`, { first, last }),
+    reviewRecordingPractice: (id: number, scenarioId: string, status: 'approved' | 'archived') =>
+      patch<RecordingDetail>(`/admin/recordings/${id}/practices/${encodeURIComponent(scenarioId)}`, { status }),
     updateQuestion: (
       id: number,
       body: Partial<Pick<ChoiceQuestion, 'stem' | 'options' | 'answer' | 'explanation' | 'status'>>,
@@ -113,6 +118,9 @@ export const api = {
     attempt: (id: string) => get<AttemptDetail>(`/admin/exams/attempts/${id}`),
   },
 
+  recordings: (q: Query) => get<RecordingPage>(`/recordings?${qs(q)}`),
+  recording: (id: string) => get<RecordingDetail>(`/recordings/${id}`),
+  recordingPlayed: (id: number) => post<{ ok: boolean }>(`/recordings/${id}/played`),
   speechConfig: () => get<{ asr_enabled: boolean; tts_enabled: boolean }>('/speech/config'),
   asr: (blob: Blob, durationMs: number, sessionId?: string) => {
     const form = new FormData()

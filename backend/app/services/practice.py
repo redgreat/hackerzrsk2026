@@ -20,6 +20,7 @@ from app.db.models import ExamAttempt, PracticeMessage, PracticeSession, User
 from app.db.usage import add_usage
 from app.graph.state import PracticeContext
 from app.services.llm.usage import UsageScope, usage_scope
+from app.services.recording_practices import require_available
 from app.services.scenarios import Scenario
 
 logger = logging.getLogger(__name__)
@@ -172,13 +173,14 @@ class PracticeService:
         exam_attempt_id: uuid.UUID | None = None,
         scenario_snapshot: dict | None = None,
     ) -> dict:
-        scenario = (
-            Scenario.model_validate(scenario_snapshot["scenario"])
-            if scenario_snapshot
-            else self.ctx.scenarios.get(scenario_id)
-        )
         sid = uuid.uuid4()
         async with self.sf() as db, db.begin():
+            current = await require_available(db, self.ctx.scenarios, scenario_id)
+            scenario = (
+                Scenario.model_validate(scenario_snapshot["scenario"]) if scenario_snapshot else current
+            )
+            if scenario_snapshot is None and scenario_id not in self.ctx.scenarios.scenarios:
+                scenario_snapshot = self.ctx.scenarios.snapshot(scenario)
             db.add(
                 PracticeSession(
                     id=sid,
@@ -204,6 +206,7 @@ class PracticeService:
             raise AppError(f"单条消息不超过 {MAX_INPUT_CHARS} 字")
         async with self.sf() as db:
             session = await self._owned(db, sid, user)
+            await require_available(db, self.ctx.scenarios, session.scenario_id, existing=True)
             if session.exam_attempt_id:
                 attempt = await db.get(ExamAttempt, session.exam_attempt_id)
                 if attempt is not None and (
@@ -228,8 +231,10 @@ class PracticeService:
 
     async def hint(self, sid: uuid.UUID, user: User) -> str:
         async with self.sf() as db:
-            if (await self._owned(db, sid, user)).mode == "exam":
+            session = await self._owned(db, sid, user)
+            if session.mode == "exam":
                 raise Forbidden("考试中不能使用求助提示")
+            await require_available(db, self.ctx.scenarios, session.scenario_id, existing=True)
         lock = await self._acquire_input(sid)
         values = await self._run_command(sid, user, Command(resume={"type": "hint"}), lock)
         return values.get("last_hint") or ""
@@ -269,7 +274,7 @@ class PracticeService:
                 .all()
             )
         scenario = self.ctx.scenarios.scenarios.get(sess.scenario_id)
-        if sess.exam_attempt_id:
+        if sess.exam_attempt_id or scenario is None:
             values = (await self.graph.aget_state(self._config(sid))).values
             if snapshot := values.get("scenario_snapshot"):
                 scenario = Scenario.model_validate(snapshot["scenario"])

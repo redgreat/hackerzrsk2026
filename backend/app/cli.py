@@ -5,7 +5,6 @@ python -m app.cli ingest-knowledge  将 knowledge/*.md 导入话术知识库
 python -m app.cli check-scenarios   校验全部场景 / 评分表 / 题库 / 试卷 YAML
 python -m app.cli create-admin --userid admin --password ******   创建或重置管理员账号
 python -m app.cli import-recordings [--file data/private/x.json] [--limit N]   导入优质录音（默认经 dbmcp）
-python -m app.cli process-recordings [--limit N]   转写 + AI 分析待处理录音
 python -m app.cli import-transcripts --file ../data/private/x.json   导入已有转写快照和待审核事件
 """
 
@@ -130,18 +129,6 @@ async def _import_recordings(file: str | None, limit: int | None) -> None:
     await _with_services(run)
 
 
-async def _process_recordings(limit: int) -> None:
-    async def run(settings, sf, svc):
-        results = await svc.process_pending(limit)
-        ok = sum(r["status"] == "ready" for r in results)
-        for r in results:
-            if r["status"] != "ready":
-                print(f"  #{r['id']} 失败：{r['error']}")
-        print(f"处理完成：成功 {ok} 条，失败 {len(results) - ok} 条（成功的录音需在管理后台审核发布）")
-
-    await _with_services(run)
-
-
 def _run(coro):
     loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
     return asyncio.run(coro, loop_factory=loop_factory)
@@ -190,7 +177,6 @@ def main() -> None:
             "check-scenarios",
             "create-admin",
             "import-recordings",
-            "process-recordings",
             "import-transcripts",
             "clean-training",
         ],
@@ -212,8 +198,6 @@ def main() -> None:
         _run(_create_admin(args.userid, args.name, args.password))
     elif cmd == "import-recordings":
         _run(_import_recordings(args.file, args.limit))
-    elif cmd == "process-recordings":
-        _run(_process_recordings(args.limit or 20))
     elif cmd == "import-transcripts":
         if not args.file:
             parser.error("import-transcripts 需要 --file")

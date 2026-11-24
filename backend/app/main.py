@@ -79,7 +79,6 @@ async def lifespan(app: FastAPI):
         )
         logger.info("服务启动：模型=%s，场景 %d 个", settings.llm.provider, len(scenarios.scenarios))
         yield
-        await recordings.shutdown()
         await practice.shutdown()
     finally:
         await pool.close()

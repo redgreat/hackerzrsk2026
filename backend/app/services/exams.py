@@ -20,6 +20,7 @@ from app.core.errors import AppError, Conflict, Forbidden, NotFound
 from app.db.models import ExamAttempt, ExamPublication, PracticeSession, User
 from app.services import exam_rules
 from app.services.practice import PracticeService
+from app.services.recording_practices import available_scenarios, require_available
 from app.services.recordings import RecordingService
 from app.services.scenarios import ScenarioRegistry
 
@@ -273,6 +274,14 @@ class ExamService:
                     ):
                         raise Forbidden(f"该考试最多可参加 {paper.max_attempts} 次，您已用完")
                 sections = publication.sections if publication else await self._build_sections(paper)
+                available = await available_scenarios(db, self.scenarios)
+                if any(
+                    item["scenario_id"] not in available
+                    for section in sections
+                    if section["type"] == "roleplay"
+                    for item in section["items"]
+                ):
+                    raise Conflict("试卷含尚未发布的练习，请联系管理员")
                 now = _now()
                 ongoing = uuid.uuid4()
                 db.add(
@@ -336,6 +345,7 @@ class ExamService:
             )
             if item is None:
                 raise NotFound("对练题不存在")
+            await require_available(db, self.scenarios, item["scenario_id"])
             if item.get("session_id"):
                 return {"session_id": item["session_id"]}
             mode = "exam" if a.kind == "exam" else "practice"

@@ -1,13 +1,10 @@
 """催收培训模块单测：密码、红线、判分、录音解析与脱敏、Paraformer 客户端、dbmcp 结果解析、题库加载。"""
 
-import json
 import uuid
 
-import httpx
 import pytest
 from langgraph.types import Command
 
-from app.core.config import RecordingSettings
 from app.core.errors import UpstreamError
 from app.core.security import hash_password, verify_password
 from app.graph import rules
@@ -16,7 +13,6 @@ from app.services import exam_rules
 from app.services import recording_rules as rr
 from app.services.dbmcp import parse_rows
 from app.services.exams import ExamRegistry, Question
-from app.services.file_asr import FileASR, stub_result
 from app.services.recording_source import excellent_calls_sql, normalize_url
 from app.services.recordings import check_answer
 
@@ -217,55 +213,6 @@ def test_parse_multi_channel_uses_channel_as_speaker():
     t = rr.build_transcript(rr.parse_paraformer(result))
     assert [x["speaker"] for x in t] == ["agent", "customer"]
     assert rr.duration_seconds(result, t) == 12
-
-
-def test_stub_result_parses():
-    t = rr.build_transcript(rr.parse_paraformer(stub_result("http://x/a.mp3")))
-    assert t[0]["speaker"] == "agent" and "[手机号]" in "".join(x["text"] for x in t)
-
-
-# ---------- Paraformer 客户端（模拟 HTTP） ----------
-
-
-async def test_dashscope_submit_poll_download():
-    calls = []
-    polls = iter(["RUNNING", "SUCCEEDED"])
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        calls.append((req.method, req.url.path))
-        if req.url.path.endswith("/transcription"):
-            body = json.loads(req.content)
-            assert req.headers["X-DashScope-Async"] == "enable"
-            assert body["input"]["file_urls"] == ["https://oss/a.mp3"]
-            assert body["parameters"]["diarization_enabled"] is True
-            return httpx.Response(200, json={"output": {"task_id": "t1", "task_status": "PENDING"}})
-        if req.url.path == "/api/v1/tasks/t1":
-            status = next(polls)
-            results = [{"transcription_url": "https://result/x.json", "subtask_status": "SUCCEEDED"}]
-            return httpx.Response(200, json={"output": {"task_status": status, "results": results}})
-        return httpx.Response(200, json=stub_result("https://oss/a.mp3"))
-
-    cfg = RecordingSettings(asr_provider="dashscope", dashscope_api_key="k", poll_interval_seconds=0)
-    submitted = []
-
-    async def on_submitted(tid):
-        submitted.append(tid)
-
-    result = await FileASR(cfg, httpx.MockTransport(handler)).transcribe(
-        "https://oss/a.mp3", None, on_submitted
-    )
-    assert submitted == ["t1"] and result["transcripts"]
-    assert [p for _, p in calls].count("/api/v1/tasks/t1") == 2
-
-
-async def test_dashscope_subtask_failure():
-    def handler(req: httpx.Request) -> httpx.Response:
-        results = [{"subtask_status": "FAILED", "code": "InvalidFile.DownloadFailed"}]
-        return httpx.Response(200, json={"output": {"task_status": "SUCCEEDED", "results": results}})
-
-    cfg = RecordingSettings(asr_provider="dashscope", dashscope_api_key="k", poll_interval_seconds=0)
-    with pytest.raises(UpstreamError, match="DownloadFailed"):
-        await FileASR(cfg, httpx.MockTransport(handler)).transcribe("u", task_id="t9")
 
 
 # ---------- 数据来源 ----------
