@@ -515,3 +515,38 @@ async def test_attempt_pins_scenario_and_rubric_through_scoring_retry(client, ex
     assert (await client.post(submit, headers=user)).json()["status"] == "submitted"
     report = (await client.get(f"/api/sessions/{sid}/report", headers=user)).json()
     assert report["rubric"] == old_rubric.name
+
+
+async def test_clear_training_records_is_admin_only_and_keeps_scopes_separate(client, exam_pool, monkeypatch):
+    admin = await _admin(client)
+    user = await _register_and_approve(client, admin, "N600")
+    practice = await client.post("/api/sessions", json={"scenario_id": "R-test-1"}, headers=user)
+    assert practice.status_code == 200, practice.text
+    attempt = await client.post("/api/exams/E01/start", headers=user)
+    assert attempt.status_code == 200, attempt.text
+    aid = attempt.json()["id"]
+    key = attempt.json()["sections"][1]["items"][0]["key"]
+    roleplay = await client.post(f"/api/exams/attempts/{aid}/roleplay", json={"key": key}, headers=user)
+    assert roleplay.status_code == 200, roleplay.text
+    sid = roleplay.json()["session_id"]
+    sessions_path = "/api/admin/sessions"
+    exams_path = "/api/admin/exams/attempts"
+
+    for path in (sessions_path, exams_path):
+        assert (await client.delete(path, headers=user)).status_code == 403
+        assert (await client.get(path, headers=admin)).json()["can_clear"]
+    settings = client._transport.app.state.container.settings
+    with monkeypatch.context() as production:
+        production.setattr(settings, "app_env", "prod")
+        for path in (sessions_path, exams_path):
+            assert (await client.delete(path, headers=admin)).status_code == 403
+            assert not (await client.get(path, headers=admin)).json()["can_clear"]
+
+    assert (await client.delete(sessions_path, headers=admin)).json()["sessions"] >= 1
+    assert (await client.get(f"/api/sessions/{practice.json()['id']}", headers=user)).status_code == 404
+    assert (await client.get(f"/api/sessions/{sid}", headers=user)).status_code == 200
+    clear = await client.delete(exams_path, headers=admin)
+    assert clear.status_code == 200 and clear.json()["attempts"] >= 1
+    assert (await client.get(f"/api/sessions/{sid}", headers=user)).status_code == 404
+    assert (await client.get("/api/exams/attempts", headers=user)).json() == []
+    assert (await client.get("/api/admin/exams/questions", headers=admin)).json()["total"] >= 12

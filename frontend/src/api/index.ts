@@ -85,7 +85,8 @@ export const api = {
     overview: () => get<Overview>('/admin/overview'),
     trend: (days: number) => get<TrendPoint[]>(`/admin/trend?days=${days}`),
     users: (q: Query) => get<Paged<AdminUser>>(`/admin/users?${qs(q)}`),
-    sessions: (q: Query) => get<Paged<AdminSession>>(`/admin/sessions?${qs(q)}`),
+    sessions: (q: Query) => get<Paged<AdminSession> & { can_clear: boolean }>(`/admin/sessions?${qs(q)}`),
+    clearPracticeRecords: () => request<{ sessions: number }>('/admin/sessions', { method: 'DELETE' }),
     session: (id: string) => get<AdminSessionDetail>(`/admin/sessions/${id}`),
     usage: (q: Query) => get<UsagePage>(`/admin/usage?${qs(q)}`),
     scenarios: () => get<AdminScenario[]>('/admin/scenarios'),
@@ -131,7 +132,8 @@ export const api = {
       post<{ created: number; duplicates: number }>('/admin/exams/questions/generate', { scenario_id: scenarioId, count }),
     reviewExamQuestion: (id: number, status: 'approved' | 'archived') =>
       patch<{ ok: boolean }>(`/admin/exams/questions/${id}`, { status }),
-    attempts: (q: Query) => get<Paged<AdminAttempt>>(`/admin/exams/attempts?${qs(q)}`),
+    attempts: (q: Query) => get<Paged<AdminAttempt> & { can_clear: boolean }>(`/admin/exams/attempts?${qs(q)}`),
+    clearExamRecords: () => request<{ sessions: number; attempts: number }>('/admin/exams/attempts', { method: 'DELETE' }),
     attempt: (id: string) => get<AttemptDetail>(`/admin/exams/attempts/${id}`),
   },
 

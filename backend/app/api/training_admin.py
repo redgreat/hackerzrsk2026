@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from app.api.deps import AdminDep, ContainerDep
+from app.services.admin import clear_training_records
 from app.services.recording_source import RecordingItem
 
 router = APIRouter(prefix="/admin", tags=["admin-training"])
@@ -165,7 +166,13 @@ async def attempts(
     page: int = 1,
     size: int = 20,
 ) -> dict:
-    return await c.exams.admin_list(paper_id, user_id, page, size)
+    result = await c.exams.admin_list(paper_id, user_id, page, size)
+    return {**result, "can_clear": c.settings.app_env in ("dev", "test")}
+
+
+@router.delete("/exams/attempts")
+async def clear_exam_attempts(c: ContainerDep, _: AdminDep) -> dict:
+    return await clear_training_records(c.session_factory, c.settings.app_env, exams=True)
 
 
 @router.get("/exams/attempts/{aid}")

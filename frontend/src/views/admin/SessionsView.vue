@@ -2,13 +2,15 @@
 import { api } from '@/api'
 import type { AdminScenario, AdminSession, AdminUser, Outcome } from '@/types'
 import { OUTCOME_EL_TAG, OUTCOME_LABEL, formatTime, scoreColor } from '@/utils/labels'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
+const canClear = ref(false)
+const clearing = ref(false)
 const rows = ref<AdminSession[]>([])
 const total = ref(0)
 const scenarios = ref<AdminScenario[]>([])
@@ -27,10 +29,34 @@ async function load() {
     const page = await api.admin.sessions({ ...filter })
     rows.value = page.items
     total.value = page.total
+    canClear.value = page.can_clear
   } catch (e) {
     ElMessage.error((e as Error).message)
   } finally {
     loading.value = false
+  }
+}
+
+async function clearRecords() {
+  try {
+    await ElMessageBox.confirm(
+      '将删除所有普通练习的会话、对话和报告，保留考试记录。此操作仅用于测试，无法撤销。',
+      '清空练习记录',
+      { type: 'warning', confirmButtonText: '确认清空' },
+    )
+  } catch {
+    return
+  }
+  clearing.value = true
+  try {
+    const result = await api.admin.clearPracticeRecords()
+    ElMessage.success(`已清空 ${result.sessions} 条练习记录`)
+    filter.page = 1
+    await load()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    clearing.value = false
   }
 }
 
@@ -84,6 +110,7 @@ onMounted(async () => {
       </el-form-item>
       <el-form-item>
         <el-button @click="reset">重置</el-button>
+        <el-button v-if="canClear" type="danger" plain :loading="clearing" :disabled="loading" @click="clearRecords">清空练习记录（测试）</el-button>
       </el-form-item>
     </el-form>
 

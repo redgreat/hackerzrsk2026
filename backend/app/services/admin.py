@@ -1,4 +1,4 @@
-"""管理后台只读查询：用户、练习记录、模型用量、场景与知识库。
+"""管理后台查询与开发环境记录清理。
 
 对话内容与客户内心独白仅向管理员开放；接口层统一经过 AdminDep 鉴权。
 """
@@ -6,16 +6,43 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Float, cast, func, select
+from sqlalchemy import Float, String, cast, column, delete, func, select, table, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import ModelUsage, PracticeMessage, PracticeSession, User
+from app.core.errors import Forbidden
+from app.db.models import ExamAttempt, ExamPublication, ModelUsage, PracticeMessage, PracticeSession, User
 from app.services.scenarios import ScenarioRegistry
 
 
 def _page(page: int, size: int) -> tuple[int, int]:
     size = max(1, min(size, 100))
     return (max(page, 1) - 1) * size, size
+
+
+async def clear_training_records(sf: async_sessionmaker[AsyncSession], app_env: str, *, exams: bool) -> dict:
+    if app_env not in ("dev", "test"):
+        raise Forbidden("仅开发和测试环境可清空记录")
+    condition = (
+        PracticeSession.exam_attempt_id.is_not(None) if exams else PracticeSession.exam_attempt_id.is_(None)
+    )
+    async with sf() as db, db.begin():
+        if exams:
+            await db.execute(text("LOCK TABLE exam_attempts IN SHARE ROW EXCLUSIVE MODE"))
+        await db.execute(text("LOCK TABLE practice_sessions IN SHARE ROW EXCLUSIVE MODE"))
+        session_ids = select(PracticeSession.id).where(condition)
+        thread_ids = select(cast(PracticeSession.id, String)).where(condition)
+        for table_name in ("checkpoint_writes", "checkpoint_blobs", "checkpoints"):
+            # LangGraph 表没有 ORM 定义，以会话 ID 定位对应线程。
+            if await db.scalar(text("SELECT to_regclass(:name)"), {"name": table_name}):
+                checkpoint = table(table_name, column("thread_id"))
+                await db.execute(delete(checkpoint).where(checkpoint.c.thread_id.in_(thread_ids)))
+        await db.execute(delete(ModelUsage).where(ModelUsage.session_id.in_(session_ids)))
+        sessions = await db.execute(delete(PracticeSession).where(condition))
+        attempts = 0
+        if exams:
+            attempts = (await db.execute(delete(ExamAttempt))).rowcount
+            await db.execute(delete(ExamPublication))
+    return {"sessions": sessions.rowcount, "attempts": attempts}
 
 
 async def list_users(sf: async_sessionmaker[AsyncSession], q: str | None, page: int, size: int) -> dict:
@@ -73,7 +100,7 @@ async def list_sessions(
     size: int,
 ) -> dict:
     offset, size = _page(page, size)
-    cond = []
+    cond = [PracticeSession.exam_attempt_id.is_(None)]
     if user_id:
         cond.append(PracticeSession.user_id == user_id)
     if scenario_id:

@@ -39,7 +39,13 @@ async def sessions(
     page: int = 1,
     size: int = 20,
 ) -> dict:
-    return await svc.list_sessions(c.session_factory, user_id, scenario_id, status, page, size)
+    result = await svc.list_sessions(c.session_factory, user_id, scenario_id, status, page, size)
+    return {**result, "can_clear": c.settings.app_env in ("dev", "test")}
+
+
+@router.delete("/sessions")
+async def clear_sessions(c: ContainerDep, _: AdminDep) -> dict:
+    return await svc.clear_training_records(c.session_factory, c.settings.app_env, exams=False)
 
 
 @router.get("/sessions/{sid}")
