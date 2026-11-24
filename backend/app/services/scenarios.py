@@ -105,7 +105,7 @@ class Rubric(BaseModel):
 
 
 class ScenarioRegistry:
-    """启动时加载 scenarios/ 下的 YAML；rubrics/ 子目录为评分表。"""
+    """可选的本地场景定义，供测试及显式指定的场景使用。"""
 
     def __init__(self, scenarios: dict[str, Scenario], rubrics: dict[str, Rubric]):
         self.scenarios = scenarios
@@ -115,7 +115,9 @@ class ScenarioRegistry:
                 raise ValueError(f"场景 {s.id} 引用了不存在的评分表 {s.scoring}")
 
     @classmethod
-    def load(cls, root: Path) -> "ScenarioRegistry":
+    def load(cls, root: Path | None) -> "ScenarioRegistry":
+        if root is None:
+            return cls({}, {})
         rubrics = {}
         for f in sorted((root / "rubrics").glob("*.y*ml")):
             r = Rubric.model_validate(yaml.safe_load(f.read_text(encoding="utf-8")))

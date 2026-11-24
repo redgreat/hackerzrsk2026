@@ -103,7 +103,7 @@ class ExamQuestionBank:
                     .limit(80)
                 )
             ).all()
-            rubric = await current_rubric(db, self.scenarios, scene.scoring)
+            rubric = await current_rubric(db, scene.scoring)
         training = {
             "背景": mask_transcript_text(scene.background),
             "目标": mask_transcript_text(scene.goal),

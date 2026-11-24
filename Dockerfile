@@ -15,7 +15,6 @@ WORKDIR /srv/backend
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY backend/ ./
-COPY scenarios /srv/scenarios
 COPY knowledge /srv/knowledge
 COPY exams /srv/exams
 COPY --from=web /web/dist /srv/frontend/dist

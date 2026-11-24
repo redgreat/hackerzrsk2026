@@ -38,7 +38,7 @@ async def get_scenario(scenario_id: str, c: ContainerDep, _: UserDep) -> dict:
         if entry is None:
             raise NotFound("练习不存在或暂未发布")
         s, rec = entry
-        rubric = await current_rubric(db, c.scenarios, s.scoring)
+        rubric = await current_rubric(db, s.scoring)
     # 只返回给员工看的信息；隐藏需求、异议、阈值不下发
     return {
         **_card(s),

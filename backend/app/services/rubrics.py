@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import Conflict
 from app.db.models import RubricVersion
-from app.services.scenarios import Rubric, ScenarioRegistry
+from app.services.scenarios import Rubric
 
 
 async def versions(db: AsyncSession, rubric_id: str):
@@ -17,14 +17,16 @@ async def versions(db: AsyncSession, rubric_id: str):
     )
 
 
-async def current_rubric(db: AsyncSession, registry: ScenarioRegistry, rubric_id: str) -> Rubric:
+async def current_rubric(db: AsyncSession, rubric_id: str) -> Rubric:
     row = await db.scalar(
         select(RubricVersion)
         .where(RubricVersion.rubric_id == rubric_id)
         .order_by(RubricVersion.version.desc())
         .limit(1)
     )
-    return Rubric.model_validate(row.content) if row else registry.rubrics[rubric_id]
+    if row is None:
+        raise Conflict("评分标准尚未初始化，请检查数据库迁移和评分标准配置")
+    return Rubric.model_validate(row.content)
 
 
 async def publish(db: AsyncSession, rubric: Rubric, base_version: int) -> int:

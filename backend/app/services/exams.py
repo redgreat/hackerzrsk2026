@@ -163,7 +163,7 @@ class ExamService:
                     used_roleplays.add(sid)
                     sc = candidates[sid]
                     if sc.scoring not in rubrics:
-                        rubrics[sc.scoring] = await current_rubric(db, self.scenarios, sc.scoring)
+                        rubrics[sc.scoring] = await current_rubric(db, sc.scoring)
                     items.append(
                         {
                             "key": f"s:{sid}",

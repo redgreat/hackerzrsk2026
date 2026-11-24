@@ -224,7 +224,7 @@ class RecordingService:
                 lines[seq] = f"{seq} {speaker}：{cleaned[:180]}"
             if not lines:
                 raise AppError("没有可用于生成的转写片段")
-            rubric = await current_rubric(db, self.scenarios, self.settings.recordings.rubric_id)
+            rubric = await current_rubric(db, self.settings.recordings.rubric_id)
         with usage_scope() as usage:
             try:
                 async with asyncio.timeout(120):

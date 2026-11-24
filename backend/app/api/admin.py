@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.deps import AdminDep, ContainerDep
-from app.core.errors import NotFound
+from app.core.errors import Conflict, NotFound
 from app.services import admin as svc
 from app.services import rubrics, stats
 from app.services.scenarios import Dimension, Rubric
@@ -104,8 +104,7 @@ async def rubric_history(c: ContainerDep, _: AdminDep) -> dict:
             for row in await rubrics.versions(db, rubric_id)
         ]
         if not history:
-            default = await rubrics.current_rubric(db, c.scenarios, rubric_id)
-            history = [{"version": 0, "created_at": None, "rubric": default.model_dump(mode="json")}]
+            raise Conflict("评分标准尚未初始化，请检查数据库迁移和评分标准配置")
     return {"versions": history}
 
 

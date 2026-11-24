@@ -137,7 +137,7 @@ class Settings(BaseSettings):
     # 可查看全员统计的工号；为空时任何登录用户都可查看（仅聚合数据）
     admin_userids: list[str] = Field(default_factory=list)
 
-    scenarios_dir: Path = PROJECT_DIR / "scenarios"
+    scenarios_dir: Path | None = None
     knowledge_dir: Path = PROJECT_DIR / "knowledge"
     exams_dir: Path = PROJECT_DIR / "exams"
     frontend_dist: Path = PROJECT_DIR / "frontend" / "dist"

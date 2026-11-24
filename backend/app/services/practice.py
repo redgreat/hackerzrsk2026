@@ -181,7 +181,7 @@ class PracticeService:
                 Scenario.model_validate(scenario_snapshot["scenario"]) if scenario_snapshot else current
             )
             if scenario_snapshot is None:
-                rubric = await current_rubric(db, self.ctx.scenarios, scenario.scoring)
+                rubric = await current_rubric(db, scenario.scoring)
                 scenario_snapshot = self.ctx.scenarios.snapshot(scenario, rubric)
             db.add(
                 PracticeSession(

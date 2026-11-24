@@ -74,7 +74,7 @@ def check_scenarios() -> None:
     for p in exams.papers.values():
         print(f"  {p.id} {p.name}（{p.kind}，{len(p.sections)} 个部分，及格 {p.pass_score}）")
     print(
-        f"校验通过：场景 {len(reg.scenarios)} 个，评分表 {len(reg.rubrics)} 个，"
+        f"校验通过：本地场景定义 {len(reg.scenarios)} 个，本地评分表定义 {len(reg.rubrics)} 个，"
         f"试卷模板 {len(exams.papers)} 套"
     )
 

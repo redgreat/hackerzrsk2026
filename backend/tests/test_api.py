@@ -43,7 +43,7 @@ def api_settings(tmp_path_factory, test_scenarios_dir) -> Settings:
 
 
 @pytest.fixture(scope="module")
-def prepared_db(api_settings: Settings):
+def prepared_db(api_settings: Settings, seed_test_rubrics):
     from alembic import command
     from alembic.config import Config
 
@@ -58,6 +58,7 @@ def prepared_db(api_settings: Settings):
     _run(_setup_langgraph())
     engine = create_engine(TEST_URL)
     with engine.begin() as conn:
+        seed_test_rubrics(conn)
         conn.execute(
             text("TRUNCATE users, practice_sessions, practice_messages, model_usage, recordings RESTART IDENTITY CASCADE")
         )
