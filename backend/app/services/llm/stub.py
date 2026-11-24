@@ -184,6 +184,10 @@ class StubChatModel(BaseChatModel):
             case "hint":
                 return _stub_hint()
             case "analyst":
+                if '"title": "PracticeEvidence"' in system:
+                    return json.dumps(
+                        {"seqs": [int(value) for value in re.findall(r"(?m)^(\d+) ", user)[:6]]}
+                    )
                 if '"title": "GeneratedPractices"' in system:
                     return json.dumps(
                         {

@@ -33,8 +33,8 @@ class RecordingPatch(BaseModel):
 
 
 class GeneratePracticesIn(BaseModel):
-    first: int = Field(ge=1)
-    last: int = Field(ge=1)
+    first: int | None = Field(None, ge=1)
+    last: int | None = Field(None, ge=1)
 
 
 class ReviewPracticeIn(BaseModel):

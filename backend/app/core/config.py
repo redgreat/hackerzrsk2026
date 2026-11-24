@@ -44,8 +44,8 @@ class LLMSettings(BaseModel):
     evaluator: PurposeModel = PurposeModel(temperature=0.1, max_tokens=600)
     coach: PurposeModel = PurposeModel(temperature=0.2, max_tokens=3000)
     hint: PurposeModel = PurposeModel(temperature=0.4, max_tokens=300)
-    # 优质录音分析（亮点话术、合规点评、听录音题目）
-    analyst: PurposeModel = PurposeModel(temperature=0.2, max_tokens=4000)
+    # 优质录音分析（亮点话术、合规点评、听录音题目、从转写生成练习草稿）
+    analyst: PurposeModel = PurposeModel(temperature=0.2, max_tokens=4000, timeout_seconds=180)
     cleanup: PurposeModel = PurposeModel(temperature=0.1, max_tokens=4000, timeout_seconds=180)
     pricing: dict[str, ModelPrice] = Field(
         default_factory=lambda: {"deepseek-chat": ModelPrice(input=2.0, output=8.0)}

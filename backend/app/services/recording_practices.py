@@ -14,6 +14,10 @@ class GeneratedPractices(BaseModel):
     scenarios: list[Scenario] = Field(min_length=1, max_length=3)
 
 
+class PracticeEvidence(BaseModel):
+    seqs: list[int] = Field(max_length=6)
+
+
 def recording_scenarios(recording: Recording) -> dict[str, dict]:
     meta = recording.meta or {}
     archived = set(meta.get("archived_scenario_ids", []))

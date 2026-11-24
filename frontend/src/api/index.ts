@@ -108,7 +108,7 @@ export const api = {
       body: { title?: string; customer_type?: string; tags?: string[]; published?: boolean; extracted_scenario_ids?: string[]; learning_note?: string; transcript_snapshot_id?: number },
     ) => patch<RecordingDetail>(`/admin/recordings/${id}`, body),
     recordingTranscripts: () => get<{ id: number; name: string }[]>('/admin/recording-transcripts'),
-    generateRecordingPractices: (id: number, first: number, last: number) =>
+    generateRecordingPractices: (id: number, first?: number, last?: number) =>
       post<RecordingDetail>(`/admin/recordings/${id}/practices`, { first, last }),
     reviewRecordingPractice: (id: number, scenarioId: string, status: 'approved' | 'archived') =>
       patch<RecordingDetail>(`/admin/recordings/${id}/practices/${encodeURIComponent(scenarioId)}`, { status }),

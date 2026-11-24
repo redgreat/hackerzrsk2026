@@ -326,7 +326,11 @@ export interface RecordingDetail extends RecordingCard {
   extracted_scenarios: { id: string; name: string }[]
   transcript_snapshot_id?: number | null
   source_transcript?: { seq: number; channel: number; text: string }[]
-  practice_candidates?: { id: string; name: string; status: 'pending' | 'approved' | 'archived'; yaml?: string }[]
+  learning_transcript?: { seq: number; speaker: string; text: string }[]
+  practice_candidates?: {
+    id: string; name: string; status: 'pending' | 'approved' | 'archived'; yaml?: string
+    source_seqs?: number[]; transcript_snapshot_id?: number
+  }[]
 }
 
 export interface RecordingPage extends Paged<RecordingCard & Pick<RecordingDetail, 'extracted_scenarios'>> {

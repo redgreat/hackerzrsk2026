@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { api } from '@/api'
-import type { RecordingDetail, ScenarioCard } from '@/types'
+import type { AdminScenario, RecordingDetail } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -9,7 +9,7 @@ const router = useRouter()
 const rid = Number(useRoute().params.id)
 const detail = ref<RecordingDetail>()
 const transcripts = ref<{ id: number; name: string }[]>([])
-const scenarios = ref<ScenarioCard[]>([])
+const scenarios = ref<AdminScenario[]>([])
 const snapshotId = ref<number>()
 const extractedIds = ref<string[]>([])
 const note = ref('')
@@ -20,7 +20,7 @@ const working = ref(false)
 onMounted(async () => {
   try {
     const [recording, sources, available] = await Promise.all([
-      api.admin.recording(rid), api.admin.recordingTranscripts(), api.scenarios(),
+      api.admin.recording(rid), api.admin.recordingTranscripts(), api.admin.scenarios(),
     ])
     detail.value = recording
     transcripts.value = sources
@@ -46,12 +46,15 @@ async function change(action: () => Promise<RecordingDetail>) {
   }
 }
 
-async function generate() {
-  if (!first.value || !last.value) return
-  const start = first.value
-  const end = last.value
+async function generate(manual = false) {
+  if (manual && (!first.value || !last.value)) return
+  const start = manual ? first.value : undefined
+  const end = manual ? last.value : undefined
   try {
-    await ElMessageBox.confirm('请确认所选片段已核对并完成去标识处理，然后提交给 AI 生成练习。', '生成练习')
+    await ElMessageBox.confirm(
+      manual ? '请确认所选片段已核对并完成去标识处理。' : '请确认这份转写允许用于 AI 训练素材处理。系统会先脱敏和筛选，再生成待审核的练习。',
+      '生成练习',
+    )
   } catch {
     return
   }
@@ -137,11 +140,17 @@ function downloadYaml(id: string, yaml: string) {
         <p v-for="row in detail.source_transcript" :key="row.seq"><b>{{ row.seq }} · 声道 {{ row.channel }}</b> {{ row.text }}</p>
       </div>
       <el-empty v-else description="尚未关联转写" :image-size="55" />
-      <div class="actions range">
-        <el-input-number v-model="first" :min="1" aria-label="开始片段编号" placeholder="起始编号" />
-        <span>至</span>
-        <el-input-number v-model="last" :min="1" aria-label="结束片段编号" placeholder="结束编号" />
-        <el-button type="primary" :loading="working" :disabled="!detail.transcript_snapshot_id || !first || !last" @click="generate">AI 生成练习</el-button>
+      <div class="range">
+        <el-button type="primary" :loading="working" :disabled="!detail.transcript_snapshot_id" @click="generate()">AI 生成练习</el-button>
+        <details class="range">
+          <summary>高级选项 · 指定片段</summary>
+          <div class="actions range">
+            <el-input-number v-model="first" :min="1" aria-label="开始片段编号" placeholder="起始编号" />
+            <span>至</span>
+            <el-input-number v-model="last" :min="1" aria-label="结束片段编号" placeholder="结束编号" />
+            <el-button :loading="working" :disabled="!detail.transcript_snapshot_id || !first || !last" @click="generate(true)">按片段生成</el-button>
+          </div>
+        </details>
       </div>
     </el-card>
 
@@ -156,6 +165,7 @@ function downloadYaml(id: string, yaml: string) {
           <el-button v-if="item.status !== 'archived'" size="small" :disabled="working" @click="review(item.id, 'archived')">归档</el-button>
           <el-button v-if="item.yaml" size="small" @click="downloadYaml(item.id, item.yaml)">下载 YAML</el-button>
         </div>
+        <p v-if="item.source_seqs?.length">生成素材来自转写 #{{ item.transcript_snapshot_id }} 的片段 {{ item.source_seqs.join('、') }}</p>
         <details v-if="item.yaml">
           <summary>查看 YAML</summary>
           <pre>{{ item.yaml }}</pre>

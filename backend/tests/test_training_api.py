@@ -213,7 +213,10 @@ async def test_recording_yaml_review_and_withdrawal(client):
             source_hash="a" * 64,
             source_file="测试录音",
             source_labels="还款困难",
-            segments=[{"seq": 1, "channel": 1, "text": "客户：我现在有还款困难。"}],
+            segments=[
+                {"seq": 1, "channel": 1, "text": "客户：我现在有还款困难。"},
+                {"seq": 2, "channel": 1, "text": "我的手机号是13812345678。"},
+            ],
             speaker_mapping={"1": "客户"},
             speaker_mapping_status="confirmed",
             time_unit="ms",
@@ -238,14 +241,15 @@ async def test_recording_yaml_review_and_withdrawal(client):
         )
     ).status_code == 200
 
-    async def generate(existing_ids=()):
-        response = await client.post(f"{route}/practices", headers=admin, json={"first": 1, "last": 1})
+    async def generate(existing_ids=(), body=None):
+        response = await client.post(f"{route}/practices", headers=admin, json=body or {})
         assert response.status_code == 200, response.text
         return next(item for item in response.json()["practice_candidates"] if item["id"] not in existing_ids)
 
     accepted = await generate()
-    archived = await generate({accepted["id"]})
+    archived = await generate({accepted["id"]}, {"first": 1, "last": 1})
     assert accepted["status"] == "pending" and "scoring:" in accepted["yaml"]
+    assert accepted["source_seqs"] == [1] and accepted["transcript_snapshot_id"] == snapshot_id
     sid = accepted["id"]
     assert (
         await client.patch(f"{route}/practices/{archived['id']}", headers=admin, json={"status": "archived"})
