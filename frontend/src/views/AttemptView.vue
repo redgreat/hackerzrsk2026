@@ -118,6 +118,11 @@ async function submit() {
     <van-nav-bar :title="a?.paper_name || '答题'" left-arrow @click-left="router.push('/exams')" />
 
     <template v-if="a">
+      <p class="page-guide">
+        {{ submitted
+          ? '查看各部分得分，并按试卷设置回看标准答案和解析。'
+          : '选择题会自动保存。完成各部分后交卷，限时试卷请留意倒计时。' }}
+      </p>
       <div class="card head">
         <div>
           <van-tag :type="a.kind === 'exam' ? 'danger' : 'primary'">{{ a.kind === 'exam' ? '正式考试' : '自测' }}</van-tag>

@@ -207,6 +207,12 @@ async function endPractice() {
       <div v-if="session.background"><b>背景：</b>{{ session.background }}</div>
       <b>目标：</b>{{ session.goal }}
       <div v-if="session.opening_tip" class="tip">提示：{{ session.opening_tip }}</div>
+      <details class="practice-guide">
+        <summary>如何对练</summary>
+        {{ session.mode === 'exam'
+          ? '根据目标与客户对话。完成后点「结束对练」并返回答卷。'
+          : '根据目标回复客户。卡住时可点「求助」，完成后点「结束对练」查看评分。' }}
+      </details>
     </div>
 
     <div ref="listEl" class="list">
@@ -305,6 +311,10 @@ async function endPractice() {
   font-size: 13px;
   color: #1d4ed8;
   line-height: 1.6;
+}
+.practice-guide {
+  margin-top: 6px;
+  font-size: 13px;
 }
 .goal .tip {
   color: #d25f00;

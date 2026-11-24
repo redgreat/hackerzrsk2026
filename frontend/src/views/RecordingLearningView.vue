@@ -57,6 +57,7 @@ function markPlayed() {
 <template>
   <div class="page">
     <van-nav-bar title="录音详情" left-arrow @click-left="router.push('/recordings')" />
+    <p class="page-guide">可边听边看转写，用关键词定位相关段落。听完可在下方选择关联练习。</p>
     <template v-if="recording">
       <div class="learning-layout">
         <section class="card">

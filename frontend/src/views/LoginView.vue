@@ -112,7 +112,7 @@ async function devLogin() {
     <div class="brand">
       <div class="logo">练</div>
       <h1>AI 客户话术陪练</h1>
-      <p class="muted">把成熟客服话术变成随时能开口练的 AI 客户</p>
+      <p class="muted">登录后可参加文字对练、学习优质录音和查看自己的成绩。</p>
     </div>
 
     <van-loading v-if="loading" class="center" vertical>正在登录…</van-loading>

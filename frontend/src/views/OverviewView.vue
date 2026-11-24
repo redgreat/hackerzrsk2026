@@ -32,6 +32,7 @@ const pct = (v: number | null) => (v == null ? '-' : `${(v * 100).toFixed(1)}%`)
 <template>
   <div class="page">
     <van-nav-bar title="效果与成本" left-arrow @click-left="router.back()" />
+    <p class="page-guide">查看练习成效、各场景表现和模型调用费用，人工带教成本用于对比。</p>
     <template v-if="data">
       <van-grid :column-num="3" :border="false" class="card grid">
         <van-grid-item :text="'完成练习'"><b>{{ data.finished_sessions }}</b></van-grid-item>

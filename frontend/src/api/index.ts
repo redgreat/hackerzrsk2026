@@ -72,7 +72,7 @@ export const api = {
   papers: () => get<PaperCard[]>('/exams'),
   myAttempts: () => get<AttemptSummary[]>('/exams/attempts'),
   startExam: (paperId: string) => post<AttemptDetail>(`/exams/${paperId}/start`),
-  attempt: (id: string) => get<AttemptDetail>(`/exams/attempts/${id}`),
+  attempt: (id: string) => request<AttemptDetail>(`/exams/attempts/${id}`, { cache: 'no-store' }),
   saveAnswers: (id: string, answers: Record<string, number[]>) =>
     put<{ saved: number }>(`/exams/attempts/${id}/answers`, { answers }),
   startRoleplay: (id: string, key: string) => post<{ session_id: string }>(`/exams/attempts/${id}/roleplay`, { key }),

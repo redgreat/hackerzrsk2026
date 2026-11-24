@@ -34,6 +34,7 @@ async function start() {
 <template>
   <div class="page">
     <van-nav-bar title="场景说明" left-arrow @click-left="router.back()" />
+    <p class="page-guide">先看背景、目标和评分维度，再开始对练。也可以先打开关联录音了解真实对话。</p>
     <template v-if="s">
       <div class="card">
         <h3>{{ s.name }}</h3>

@@ -47,6 +47,7 @@ function logout() {
         </div>
       </el-header>
       <el-main class="main">
+        <p v-if="route.meta.guide" class="page-guide admin-guide">{{ route.meta.guide }}</p>
         <router-view />
       </el-main>
     </el-container>
@@ -93,6 +94,9 @@ function logout() {
 }
 .main {
   padding: 20px;
+}
+.admin-guide {
+  margin: 0 0 14px;
 }
 .muted {
   color: #86909c;

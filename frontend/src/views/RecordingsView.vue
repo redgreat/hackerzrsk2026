@@ -32,6 +32,7 @@ onMounted(loadMore)
 <template>
   <div class="page">
     <van-nav-bar title="录音学习" />
+    <p class="page-guide">选择一条优质录音，听员工怎么回应客户，再尝试同一录音派生的练习。</p>
     <router-link
       v-for="recording in items"
       :key="recording.id"

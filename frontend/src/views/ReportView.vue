@@ -61,6 +61,7 @@ async function again() {
 <template>
   <div class="page">
     <van-nav-bar title="评分报告" left-arrow @click-left="router.push('/history')" />
+    <p class="page-guide">先看分项和改进建议，再回到逐轮点评对照自己的原话，找出下次可以改进的一个动作。</p>
 
     <van-loading v-if="waiting" vertical class="wait">AI 教练正在评分，请稍候…</van-loading>
 

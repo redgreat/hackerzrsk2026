@@ -43,6 +43,7 @@ async function start(p: PaperCard) {
 <template>
   <div class="page">
     <van-nav-bar title="考试与自测" />
+    <p class="page-guide">开考前先查看及格分、时限和剩余次数。已开始的答卷可以继续作答，已交卷的成绩可在本页回看。</p>
     <van-skeleton v-if="loading" :row="6" style="margin: 16px" />
 
     <div v-for="p in papers" :key="p.id" class="card paper">

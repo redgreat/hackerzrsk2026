@@ -37,6 +37,17 @@ body {
   font-size: 13px;
 }
 
+.page-guide {
+  margin: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid #91bcff;
+  border-radius: 4px;
+  background: #edf4ff;
+  color: #344764;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
 .section-title {
   margin: 18px 16px 6px;
   font-size: 14px;

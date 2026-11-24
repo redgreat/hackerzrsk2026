@@ -42,6 +42,7 @@ onMounted(async () => {
       <ExamQuestionBank />
     </el-tab-pane>
     <el-tab-pane label="考试成绩" name="results" lazy>
+      <p class="muted">可按试卷筛选，点「详情」核对考试结果和作答内容。</p>
       <div style="margin-bottom: 12px; display: flex; gap: 8px">
         <el-select v-model="paperId" placeholder="全部试卷" clearable style="width: 220px" @change="page = 1; load()">
           <el-option v-for="p in papers" :key="p.id" :label="p.name" :value="p.id" />

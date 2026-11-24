@@ -31,7 +31,7 @@ onMounted(async () => {
   <div class="page">
     <div class="hero">
       <div class="hello">你好，{{ auth.user?.name || '同学' }}</div>
-      <div class="sub">选一个客户场景，开口练专业话术</div>
+      <div class="sub">按业务背景或练习类型筛选。选中场景后先了解目标，再和 AI 客户对练。</div>
     </div>
 
     <van-skeleton v-if="loading" :row="6" style="margin: 16px" />

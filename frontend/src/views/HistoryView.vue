@@ -37,6 +37,7 @@ function logout() {
     <van-nav-bar title="我的练习">
       <template #right><span class="muted" @click="logout">退出</span></template>
     </van-nav-bar>
+    <p class="page-guide">查看自己的练习成绩和待提升能力，点开一条已完成的练习可回看报告。</p>
 
     <div v-if="stats" class="card summary">
       <div>
