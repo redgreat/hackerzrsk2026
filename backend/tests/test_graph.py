@@ -124,7 +124,7 @@ async def test_evaluator_rejects_unrelated_chitchat(graph, ctx, monkeypatch):
 
     monkeypatch.setattr(ctx.llm, "structured", evaluate)
     cfg = _cfg()
-    await _run(graph, ctx, {"session_id": "s", "user_id": "u1", "scenario_id": "C07"}, cfg)
+    await _run(graph, ctx, {"session_id": "s", "user_id": "u1", "scenario_id": "S01"}, cfg)
     with usage_scope() as usage:
         events = await _run(graph, ctx, Command(resume={"type": "message", "text": "你好，今天天气"}), cfg)
     assert [e["text"] for e in events if e["type"] == "token"] == [

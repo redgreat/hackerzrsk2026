@@ -8,12 +8,13 @@ import { useRoute, useRouter } from 'vue-router'
 const route = useRoute()
 const router = useRouter()
 const s = ref<ScenarioDetail | null>(null)
+const loadError = ref('')
 
 onMounted(async () => {
   try {
     s.value = await api.scenario(route.params.id as string)
   } catch (e) {
-    showFailToast((e as Error).message)
+    loadError.value = (e as Error).message
   }
 })
 
@@ -38,6 +39,10 @@ async function start() {
         <h3>{{ s.name }}</h3>
         <van-rate :model-value="s.difficulty" readonly size="14" color="#ff7d00" void-color="#e5e6eb" />
         <p class="muted">约 {{ s.estimated_minutes }} 分钟 · 最多 {{ s.max_turns }} 轮</p>
+      </div>
+      <div class="card">
+        <van-cell title="关联录音" :label="s.source_recording.title" icon="music-o"
+          :to="`/recordings/${s.source_recording.id}`" is-link />
       </div>
       <div class="card">
         <h3>客户：{{ s.persona.name }}（{{ s.persona.role }}）</h3>
@@ -65,6 +70,7 @@ async function start() {
         <van-button type="primary" block round size="large" @click="start">开始对练</van-button>
       </div>
     </template>
+    <van-empty v-else-if="loadError" :description="loadError" />
     <van-skeleton v-else :row="8" style="margin: 16px" />
   </div>
 </template>

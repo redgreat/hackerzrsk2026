@@ -3,7 +3,7 @@
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from app.api.deps import AdminDep, ContainerDep
@@ -119,9 +119,41 @@ async def papers(c: ContainerDep, _: AdminDep) -> list[dict]:
     return await c.exams.admin_papers()
 
 
-@router.post("/exams/papers/{paper_id}/publish")
-async def publish_paper(paper_id: str, c: ContainerDep, _: AdminDep) -> dict:
-    return await c.exams.publish(paper_id)
+class GenerateExamQuestionsIn(BaseModel):
+    scenario_id: str = Field(min_length=1, max_length=32)
+    count: int = Field(6, ge=1, le=8)
+
+
+class ExamQuestionReviewIn(BaseModel):
+    status: Literal["approved", "archived"]
+
+
+@router.get("/exams/question-sources")
+async def exam_question_sources(c: ContainerDep, _: AdminDep) -> list[dict]:
+    return await c.exams.question_bank.sources()
+
+
+@router.get("/exams/questions")
+async def exam_questions(
+    c: ContainerDep,
+    _: AdminDep,
+    status: Literal["pending", "approved", "archived"] | None = None,
+    page: int = Query(1, ge=1),
+) -> dict:
+    return await c.exams.question_bank.list_questions(status, page)
+
+
+@router.post("/exams/questions/generate")
+async def generate_exam_questions(body: GenerateExamQuestionsIn, c: ContainerDep, user: AdminDep) -> dict:
+    return await c.exams.question_bank.generate(body.scenario_id, body.count, user.id)
+
+
+@router.patch("/exams/questions/{question_id}")
+async def review_exam_question(
+    question_id: int, body: ExamQuestionReviewIn, c: ContainerDep, _: AdminDep
+) -> dict:
+    await c.exams.question_bank.review(question_id, body.status)
+    return {"ok": True}
 
 
 @router.get("/exams/attempts")

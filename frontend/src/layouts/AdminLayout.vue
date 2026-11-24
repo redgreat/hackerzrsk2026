@@ -17,7 +17,7 @@ const menus = [
   { path: '/admin/accounts', label: '账号审核' },
   { path: '/admin/users', label: '员工' },
   { path: '/admin/recordings', label: '优秀录音' },
-  { path: '/admin/exams', label: '考试成绩' },
+  { path: '/admin/exams', label: '考试管理' },
   { path: '/admin/usage', label: '模型用量' },
   { path: '/admin/scenarios', label: '场景配置' },
   { path: '/admin/knowledge', label: '话术知识库' },

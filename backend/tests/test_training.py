@@ -12,7 +12,8 @@ from app.graph.schemas import DimensionScore
 from app.services import exam_rules
 from app.services import recording_rules as rr
 from app.services.dbmcp import parse_rows
-from app.services.exams import ExamRegistry, Question
+from app.services.exam_question_bank import QuestionDraft
+from app.services.exams import ExamRegistry
 from app.services.recording_source import excellent_calls_sql, normalize_url
 from app.services.recordings import check_answer
 
@@ -57,7 +58,18 @@ async def _run(graph, ctx, payload, cfg):
 
 async def test_collection_red_line_caps_report(graph, ctx):
     cfg = _cfg()
-    await _run(graph, ctx, {"session_id": "s", "user_id": "u1", "scenario_id": "C03"}, cfg)
+    scenario = ctx.scenarios.get("S01").model_copy(update={"scoring": "collection_default"})
+    await _run(
+        graph,
+        ctx,
+        {
+            "session_id": "s",
+            "user_id": "u1",
+            "scenario_id": scenario.id,
+            "scenario_snapshot": ctx.scenarios.snapshot(scenario),
+        },
+        cfg,
+    )
     v = await _run(
         graph, ctx, Command(resume={"type": "message", "text": "你再不还钱就等着坐牢吧，老赖"}), cfg
     )
@@ -129,24 +141,27 @@ def test_check_answer_helper():
 def test_exam_registry_loads(settings, registry):
     reg = ExamRegistry.load(settings.exams_dir, registry)
     assert {"E01", "T01", "T02", "T03"} <= set(reg.papers)
-    assert len(reg.questions) >= 20
-    quiz = reg.papers["E01"].sections[0]
-    picked = reg.pick_quiz(quiz)
-    assert len(picked) == quiz.count and len({q.id for q in picked}) == quiz.count
-    assert reg.questions["Q002"].options == ["正确", "错误"]
+    assert [section.count for section in reg.papers["E01"].sections] == [12, 2]
 
 
 @pytest.mark.parametrize(
-    "raw",
+    "changes",
     [
-        {"id": "x", "stem": "s", "options": ["a", "b"], "answer": [2]},
-        {"id": "x", "stem": "s", "options": ["a", "b"], "answer": [0, 1]},
-        {"id": "x", "stem": "s", "options": ["a"], "answer": [0]},
+        {"correct_index": 4},
+        {"options": ["先核实", "立即披露", "重复", "重 复"]},
+        {"options": ["A"]},
     ],
 )
-def test_question_validation(raw):
+def test_question_validation(changes):
+    raw = {
+        "topic": "核实身份",
+        "stem": "什么情况下先核实身份？",
+        "options": ["先核实", "立即披露", "询问同事", "直接结束"],
+        "correct_index": 0,
+        "explanation": "保护客户信息。",
+    }
     with pytest.raises(ValueError):
-        Question.model_validate(raw)
+        QuestionDraft.model_validate(raw | changes)
 
 
 def test_paper_with_unknown_scenario_rejected(tmp_path, registry):

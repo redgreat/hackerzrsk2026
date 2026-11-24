@@ -187,6 +187,18 @@ class ExamPublication(Base):
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ExamQuestion(TimestampMixin, Base):
+    __tablename__ = "exam_questions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    scenario_id: Mapped[str] = mapped_column(String(32), index=True)
+    scenario_name: Mapped[str] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    stem_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    topic_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    content: Mapped[dict] = mapped_column(JSONB)
+
+
 class ExamAttempt(TimestampMixin, Base):
     __tablename__ = "exam_attempts"
     __table_args__ = (
@@ -198,6 +210,7 @@ class ExamAttempt(TimestampMixin, Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     paper_id: Mapped[str] = mapped_column(String(32))
     publication_id: Mapped[int | None] = mapped_column(ForeignKey("exam_publications.id"))
+    paper_snapshot: Mapped[dict | None] = mapped_column(JSONB)
     paper_name: Mapped[str] = mapped_column(String(128), default="")
     kind: Mapped[str] = mapped_column(String(16), default="exam", comment="exam/self_test")
     status: Mapped[str] = mapped_column(String(16), default="in_progress", comment="in_progress/submitted")

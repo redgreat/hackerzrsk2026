@@ -19,6 +19,7 @@ export interface ScenarioCard {
 }
 
 export interface ScenarioDetail extends ScenarioCard {
+  source_recording: { id: number; title: string }
   background: string
   goal: string
   opening: { speaker: 'user' | 'customer'; tip: string | null }
@@ -313,6 +314,18 @@ export interface ChoiceQuestion {
   answer?: number[]
   explanation?: string
   status?: 'pending' | 'approved' | 'rejected'
+}
+
+export interface ExamBankQuestion {
+  id: number
+  scenario_id: string
+  scenario_name: string
+  status: 'pending' | 'approved' | 'archived'
+  topic: string
+  stem: string
+  options: string[]
+  answer: number[]
+  explanation: string
 }
 
 export interface RecordingDetail extends RecordingCard {

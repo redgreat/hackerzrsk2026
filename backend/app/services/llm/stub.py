@@ -184,6 +184,21 @@ class StubChatModel(BaseChatModel):
             case "hint":
                 return _stub_hint()
             case "analyst":
+                if '"title": "GeneratedExamQuestions"' in system:
+                    return json.dumps(
+                        {
+                            "questions": [
+                                {
+                                    "topic": "核实身份后再沟通",
+                                    "stem": "通话中，对方尚未确认本人身份，工作人员应该怎么做？",
+                                    "options": ["先核实身份", "直接透露欠款", "询问对方同事", "承诺减免本金"],
+                                    "correct_index": 0,
+                                    "explanation": "先核实身份，再沟通具体业务，避免泄露客户信息。",
+                                }
+                            ],
+                        },
+                        ensure_ascii=False,
+                    )
                 if '"title": "PracticeEvidence"' in system:
                     return json.dumps(
                         {"seqs": [int(value) for value in re.findall(r"(?m)^(\d+) ", user)[:6]]}

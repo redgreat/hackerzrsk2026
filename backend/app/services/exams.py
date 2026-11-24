@@ -1,4 +1,4 @@
-"""考试与自测：题库/试卷 YAML（exams/）、出题快照、作答保存、交卷判分。
+"""考试与自测：数据库题库、试卷模板 YAML、出题快照、作答保存、交卷判分。
 
 试卷由 section 组成：quiz（题库选择题）/ listening（听录音答题）/ roleplay（AI 情景对练，禁用提示）。
 出题时生成快照（含答案）存入 exam_attempts.sections，作答期间只下发不含答案的视图。
@@ -12,13 +12,14 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.errors import AppError, Conflict, Forbidden, NotFound
-from app.db.models import ExamAttempt, ExamPublication, PracticeSession, User
+from app.db.models import ExamAttempt, ExamPublication, ExamQuestion, PracticeSession, User
 from app.services import exam_rules
+from app.services.exam_question_bank import ExamQuestionBank
 from app.services.practice import PracticeService
 from app.services.recording_practices import available_scenarios, require_available
 from app.services.recordings import RecordingService
@@ -27,38 +28,14 @@ from app.services.scenarios import ScenarioRegistry
 logger = logging.getLogger(__name__)
 
 
-class Question(BaseModel):
-    id: str
-    type: Literal["single", "multi", "judge"] = "single"
-    stem: str
-    options: list[str] = Field(default_factory=list)
-    answer: list[int]
-    explanation: str = ""
-    tags: list[str] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def _check(self) -> "Question":
-        if self.type == "judge" and not self.options:
-            self.options = ["正确", "错误"]
-        if len(self.options) < 2:
-            raise ValueError(f"题目 {self.id}: 至少 2 个选项")
-        if not self.answer or any(not 0 <= a < len(self.options) for a in self.answer):
-            raise ValueError(f"题目 {self.id}: 答案下标越界")
-        if self.type != "multi" and len(self.answer) != 1:
-            raise ValueError(f"题目 {self.id}: 单选/判断只能有一个答案")
-        return self
-
-
 class Section(BaseModel):
     type: Literal["quiz", "listening", "roleplay"]
     title: str
     weight: float = Field(gt=0)
-    # quiz：指定题目 id，或按标签随机抽 count 道；listening：随机抽 count 道
-    question_ids: list[str] = Field(default_factory=list)
-    tags: list[str] = Field(default_factory=list)
     count: int | None = Field(None, ge=1)
     # roleplay：指定场景；设置 count 时从中随机抽取
     scenario_ids: list[str] = Field(default_factory=list)
+    from_recordings: bool = False
 
 
 class Paper(BaseModel):
@@ -77,41 +54,24 @@ class Paper(BaseModel):
 
 
 class ExamRegistry:
-    def __init__(self, papers: dict[str, Paper], questions: dict[str, Question]):
+    def __init__(self, papers: dict[str, Paper]):
         self.papers = papers
-        self.questions = questions
 
     @classmethod
     def load(cls, root: Path, scenarios: ScenarioRegistry) -> "ExamRegistry":
-        questions: dict[str, Question] = {}
-        for f in sorted((root / "questions").glob("*.y*ml")):
-            for raw in yaml.safe_load(f.read_text(encoding="utf-8")) or []:
-                q = Question.model_validate(raw)
-                if q.id in questions:
-                    raise ValueError(f"题目 id 重复：{q.id}")
-                questions[q.id] = q
         papers: dict[str, Paper] = {}
         for f in sorted((root / "papers").glob("*.y*ml")):
             p = Paper.model_validate(yaml.safe_load(f.read_text(encoding="utf-8")))
             if p.id in papers:
                 raise ValueError(f"试卷 id 重复：{p.id}")
             for s in p.sections:
-                missing = [q for q in s.question_ids if q not in questions]
-                if missing:
-                    raise ValueError(f"试卷 {p.id} 引用了不存在的题目：{missing}")
                 missing = [sid for sid in s.scenario_ids if sid not in scenarios.scenarios]
                 if missing:
                     raise ValueError(f"试卷 {p.id} 引用了不存在的场景：{missing}")
-                if s.type == "quiz" and not s.question_ids and not cls._by_tags(questions, s.tags):
-                    raise ValueError(f"试卷 {p.id} 的 {s.title} 没有可抽的题目")
-                if s.type == "roleplay" and not s.scenario_ids:
+                if s.type == "roleplay" and not (s.scenario_ids or s.from_recordings):
                     raise ValueError(f"试卷 {p.id} 的 {s.title} 未指定场景")
             papers[p.id] = p
-        return cls(papers, questions)
-
-    @staticmethod
-    def _by_tags(questions: dict[str, Question], tags: list[str]) -> list[Question]:
-        return [q for q in questions.values() if not tags or set(tags) & set(q.tags)]
+        return cls(papers)
 
     def enabled(self) -> list[Paper]:
         return [p for p in self.papers.values() if p.enabled]
@@ -121,13 +81,6 @@ class ExamRegistry:
         if not p or not p.enabled:
             raise NotFound(f"试卷不存在：{paper_id}")
         return p
-
-    def pick_quiz(self, s: Section) -> list[Question]:
-        if s.question_ids:
-            qs = [self.questions[i] for i in s.question_ids]
-            return random.sample(qs, min(s.count, len(qs))) if s.count else qs
-        pool = self._by_tags(self.questions, s.tags)
-        return random.sample(pool, min(s.count or len(pool), len(pool)))
 
 
 def _now() -> datetime:
@@ -148,16 +101,34 @@ class ExamService:
         self.practice = practice
         self.recordings = recordings
         self.scenarios = scenarios
+        self.question_bank = ExamQuestionBank(sf, scenarios, recordings.llm)
 
     # ---------- 出题 ----------
 
-    async def _build_sections(self, paper: Paper) -> list[dict]:
+    async def _build_sections(self, db: AsyncSession, paper: Paper, available: dict) -> list[dict]:
         sections = []
+        used_questions: set[int] = set()
+        used_roleplays: set[str] = set()
         for s in paper.sections:
             items: list[dict] = []
             if s.type == "quiz":
-                for q in self.registry.pick_quiz(s):
-                    items.append({"key": f"q:{q.id}", **q.model_dump(exclude={"id", "tags"})})
+                pool = (
+                    await db.scalars(
+                        select(ExamQuestion).where(
+                            ExamQuestion.status == "approved",
+                            ExamQuestion.scenario_id.in_(available),
+                            ExamQuestion.id.not_in(used_questions),
+                        )
+                    )
+                ).all()
+                count = s.count or len(pool)
+                if count == 0 or len(pool) < count:
+                    raise Conflict(
+                        f"可用合规题不足（当前 {len(pool)} 道，需要 {s.count or 1} 道），请联系管理员补充题库"
+                    )
+                for q in random.sample(list(pool), count):
+                    used_questions.add(q.id)
+                    items.append({"key": f"q:{q.id}", **q.content})
             elif s.type == "listening":
                 for q in await self.recordings.sample_questions(s.count or 3):
                     items.append(
@@ -172,13 +143,23 @@ class ExamService:
                         }
                     )
             else:
+                candidates = {sid: self.scenarios.get(sid) for sid in s.scenario_ids}
+                if s.from_recordings:
+                    candidates = {
+                        sid: available[sid]
+                        for sid in sorted(available)
+                        if sid not in self.scenarios.scenarios and sid not in used_roleplays
+                    }
+                    if len(candidates) < (s.count or 1):
+                        raise AppError("可用的已发布录音练习不足，无法组卷")
                 ids = (
-                    random.sample(s.scenario_ids, min(s.count, len(s.scenario_ids)))
-                    if s.count
-                    else s.scenario_ids
+                    random.sample(list(candidates), s.count)
+                    if s.count and len(candidates) > s.count
+                    else candidates
                 )
                 for sid in ids:
-                    sc = self.scenarios.get(sid)
+                    used_roleplays.add(sid)
+                    sc = candidates[sid]
                     items.append(
                         {
                             "key": f"s:{sid}",
@@ -196,46 +177,16 @@ class ExamService:
             raise AppError("试卷暂无可用题目，请联系管理员")
         return sections
 
-    async def publish(self, paper_id: str) -> dict:
-        paper = self.registry.get(paper_id)
-        if paper.kind != "exam" or any(s.type == "listening" for s in paper.sections):
-            raise AppError("仅可发布不含录音题的正式试卷")
-        publication = ExamPublication(
-            paper_id=paper.id,
-            paper=paper.model_dump(mode="json"),
-            sections=await self._build_sections(paper),
-        )
-        async with self.sf() as db, db.begin():
-            db.add(publication)
-            await db.flush()
-            return {"id": publication.id, "paper_id": paper.id}
-
-    async def _publication(self, db: AsyncSession, paper_id: str) -> ExamPublication | None:
-        return await db.scalar(
-            select(ExamPublication)
-            .where(ExamPublication.paper_id == paper_id)
-            .order_by(ExamPublication.id.desc())
-            .limit(1)
-        )
-
     async def _attempt_paper(self, db: AsyncSession, attempt: ExamAttempt) -> Paper | None:
+        if attempt.paper_snapshot is not None:
+            return Paper.model_validate(attempt.paper_snapshot)
         if attempt.publication_id is not None:
             publication = await db.get(ExamPublication, attempt.publication_id)
             return Paper.model_validate(publication.paper)
         return self.registry.papers.get(attempt.paper_id)
 
     async def admin_papers(self) -> list[dict]:
-        async with self.sf() as db:
-            rows = await db.execute(
-                select(ExamPublication.paper_id, func.max(ExamPublication.id)).group_by(
-                    ExamPublication.paper_id
-                )
-            )
-            versions = dict(rows.all())
-        return [
-            {**paper_card(p), "enabled": p.enabled, "publication_id": versions.get(p.id)}
-            for p in self.registry.papers.values()
-        ]
+        return [{**paper_card(p), "enabled": p.enabled} for p in self.registry.papers.values()]
 
     async def _count_attempts(self, db: AsyncSession, user: User, paper_id: str) -> int:
         return (
@@ -263,18 +214,14 @@ class ExamService:
             )
             if ongoing is None:
                 paper = self.registry.get(paper_id)
-                publication = await self._publication(db, paper_id) if paper.kind == "exam" else None
-                if paper.kind == "exam" and publication is None:
-                    raise NotFound("试卷尚未发布")
-                if publication:
-                    paper = Paper.model_validate(publication.paper)
-                    if (
-                        paper.max_attempts
-                        and await self._count_attempts(db, user, paper_id) >= paper.max_attempts
-                    ):
-                        raise Forbidden(f"该考试最多可参加 {paper.max_attempts} 次，您已用完")
-                sections = publication.sections if publication else await self._build_sections(paper)
+                if (
+                    paper.kind == "exam"
+                    and paper.max_attempts
+                    and await self._count_attempts(db, user, paper_id) >= paper.max_attempts
+                ):
+                    raise Forbidden(f"该考试最多可参加 {paper.max_attempts} 次，您已用完")
                 available = await available_scenarios(db, self.scenarios)
+                sections = await self._build_sections(db, paper, available)
                 if any(
                     item["scenario_id"] not in available
                     for section in sections
@@ -290,7 +237,7 @@ class ExamService:
                         user_id=user.id,
                         paper_id=paper.id,
                         paper_name=paper.name,
-                        publication_id=publication.id if publication else None,
+                        paper_snapshot=paper.model_dump(mode="json"),
                         kind=paper.kind,
                         sections=sections,
                         answers={},
@@ -418,12 +365,7 @@ class ExamService:
 
     async def list_papers(self, user: User) -> list[dict]:
         async with self.sf() as db:
-            papers = []
-            for template in self.registry.enabled():
-                if template.kind == "self_test":
-                    papers.append(template)
-                elif publication := await self._publication(db, template.id):
-                    papers.append(Paper.model_validate(publication.paper))
+            papers = self.registry.enabled()
             rows = (
                 await db.execute(
                     select(

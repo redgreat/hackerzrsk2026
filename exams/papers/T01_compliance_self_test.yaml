@@ -9,5 +9,4 @@ sections:
   - type: quiz
     title: 合规红线
     weight: 100
-    tags: [合规]
     count: 10

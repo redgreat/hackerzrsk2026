@@ -29,23 +29,33 @@ def recording_scenarios(recording: Recording) -> dict[str, dict]:
     return entries
 
 
-async def available_scenarios(db, registry: ScenarioRegistry) -> dict[str, Scenario]:
+async def published_scenarios(db, registry: ScenarioRegistry) -> dict[str, tuple[Scenario, Recording]]:
     recordings = await db.scalars(
         select(Recording)
-        .options(load_only(Recording.meta, Recording.published))
+        .options(load_only(Recording.meta, Recording.title))
         .where(
-            or_(Recording.meta.has_key("extracted_scenario_ids"), Recording.meta.has_key("scenario_drafts"))
+            Recording.published.is_(True),
+            or_(Recording.meta.has_key("extracted_scenario_ids"), Recording.meta.has_key("scenario_drafts")),
         )
+        .order_by(Recording.id)
     )
-    scenes = {scenario.id: scenario for scenario in registry.list()}
-    unavailable = set()
+    scenes = {}
     for rec in recordings:
         for sid, entry in recording_scenarios(rec).items():
-            if not rec.published or entry["status"] != "approved":
-                unavailable.add(sid)
-            elif entry.get("yaml"):
-                scenes[sid] = Scenario.model_validate(yaml.safe_load(entry["yaml"]))
-    return {sid: scene for sid, scene in scenes.items() if sid not in unavailable}
+            if entry["status"] != "approved":
+                continue
+            scene = (
+                Scenario.model_validate(yaml.safe_load(entry["yaml"]))
+                if entry.get("yaml")
+                else registry.scenarios.get(sid)
+            )
+            if scene and scene.enabled:
+                scenes.setdefault(sid, (scene, rec))
+    return scenes
+
+
+async def available_scenarios(db, registry: ScenarioRegistry) -> dict[str, Scenario]:
+    return {sid: scene for sid, (scene, _) in (await published_scenarios(db, registry)).items()}
 
 
 async def require_available(db, registry: ScenarioRegistry, sid: str, *, existing: bool = False) -> Scenario:

@@ -12,9 +12,9 @@ sections:
   - type: quiz
     title: 合规与话术知识
     weight: 40
-    tags: [合规, 话术]
     count: 12
   - type: roleplay
     title: 文字情景对练
     weight: 60
-    scenario_ids: [C08, C11]
+    from_recordings: true
+    count: 2

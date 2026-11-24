@@ -17,7 +17,8 @@ from app.core.config import WeComSettings
 from app.core.errors import AppError
 from app.db.models import PracticeSession, User
 from app.services.practice import PracticeService
-from app.services.scenarios import ScenarioRegistry
+from app.services.recording_practices import available_scenarios
+from app.services.scenarios import Scenario, ScenarioRegistry
 from app.services.users import upsert_user
 from app.services.wecom import WeComClient
 
@@ -27,7 +28,7 @@ DEDUP_TTL = 600
 
 HELP_TEXT = (
     "AI 客户话术陪练\n"
-    "· 回复场景编号（如 1 或 S01）开始练习\n"
+    "· 回复菜单里的编号开始练习\n"
     "· 练习中可发文字或单条短语音和客户对话\n"
     "· 回复「求助」获取一条话术提示\n"
     "· 回复「结束」生成评分报告\n"
@@ -71,15 +72,15 @@ def parse_command(text: str, ongoing: bool, scenario_ids: list[str]) -> tuple[st
         return "end", None
     if ongoing:
         return "message", t
-    m = re.fullmatch(r"(?:开始|练习|start)?\s*(S\d{2}|\d{1,2})", t, re.IGNORECASE)
+    m = re.fullmatch(r"(?:开始|练习|start)?\s*([a-z0-9-]+)", t, re.IGNORECASE)
     if m:
         key = m.group(1).upper()
         if key.isdigit():
             idx = int(key) - 1
             if 0 <= idx < len(scenario_ids):
                 return "start", scenario_ids[idx]
-        elif key in scenario_ids:
-            return "start", key
+        elif match := next((sid for sid in scenario_ids if sid.upper() == key), None):
+            return "start", match
     return "unknown", None
 
 
@@ -136,14 +137,19 @@ class WeComChatBot:
             return await self._say(msg.userid, HELP_TEXT)
 
         active = await self.practice.active_session(user)
-        scenario_ids = [s.id for s in self.scenarios.list()]
+        async with self.sf() as db:
+            scenarios = await available_scenarios(db, self.scenarios)
+        scenario_ids = list(scenarios)
         cmd, arg = parse_command(msg.content, active is not None, scenario_ids)
         if cmd == "help":
             await self._say(msg.userid, HELP_TEXT)
         elif cmd == "menu" or cmd == "unknown":
-            await self._say(msg.userid, self._menu(None if cmd == "menu" else "没有识别这条指令。"))
+            await self._say(
+                msg.userid,
+                self._menu(list(scenarios.values()), None if cmd == "menu" else "没有识别这条指令。"),
+            )
         elif cmd == "start":
-            await self._start(user, arg)
+            await self._start(user, scenarios[arg])
         elif cmd == "hint":
             hint = await self.practice.hint(active.id, user)
             await self._say(msg.userid, f"教练提示：{hint}")
@@ -155,15 +161,16 @@ class WeComChatBot:
         else:
             await self._chat(user, active, msg.content)
 
-    def _menu(self, prefix: str | None) -> str:
+    def _menu(self, scenarios: list[Scenario], prefix: str | None) -> str:
+        if not scenarios:
+            return (prefix or "") + "暂无已发布的录音练习。"
         lines = [prefix] if prefix else []
         lines.append("请选择练习场景（回复编号或场景代号开始）：")
-        for i, s in enumerate(self.scenarios.list(), 1):
+        for i, s in enumerate(scenarios, 1):
             lines.append(f"{i}. {s.name}（{s.id}，难度 {s.difficulty}，约 {s.estimated_minutes} 分钟）")
         return "\n".join(lines)
 
-    async def _start(self, user: User, scenario_id: str) -> None:
-        scenario = self.scenarios.get(scenario_id)
+    async def _start(self, user: User, scenario: Scenario) -> None:
         detail = await self.practice.start(user, scenario.id)
         first = detail["messages"][0] if detail["messages"] else None
         opening = (
@@ -193,8 +200,9 @@ class WeComChatBot:
         if errors:
             return await self._say(user.userid, errors[0])
         reply = "".join(parts).strip()
-        persona = self.scenarios.get(active.scenario_id).persona.name
         if reply:
+            detail = await self.practice.detail(active.id, user)
+            persona = (detail["persona"] or {}).get("name", "客户")
             await self._say(user.userid, f"{persona}：{reply}")
         if status != "ongoing":
             await self._send_report(
@@ -204,7 +212,9 @@ class WeComChatBot:
     async def _last_report(self, user: User) -> None:
         last = await self.practice.last_reported_session(user)
         if last is None:
-            return await self._say(user.userid, "还没有完成的练习。" + "\n" + self._menu(None))
+            async with self.sf() as db:
+                scenarios = await available_scenarios(db, self.scenarios)
+            return await self._say(user.userid, self._menu(list(scenarios.values()), "还没有完成的练习。"))
         await self._send_report(user, last.id, last.scenario_id, "这是你最近一次练习的报告。")
 
     async def _send_report(self, user: User, sid, scenario_id: str, header: str) -> None:
@@ -223,10 +233,9 @@ class WeComChatBot:
             lines.append("改进：" + "；".join(report["improvements"][:2]))
         await self._say(user.userid, "\n".join(lines))
         if self.cfg.public_base_url:
-            scenario = self.scenarios.get(scenario_id)
             await self.wecom.send_link_card(
                 user.userid,
-                f"评分报告 · {scenario.name}",
+                f"评分报告 · {report.get('scenario_name') or scenario_id}",
                 f"总分 {report['total_score']}，点击查看逐轮点评、推荐话术与客户内心独白",
                 f"{self.cfg.public_base_url.rstrip('/')}/report/{sid}",
             )

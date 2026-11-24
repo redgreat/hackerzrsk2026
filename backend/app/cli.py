@@ -2,7 +2,7 @@
 
 python -m app.cli init-db           执行 Alembic 迁移 + 创建 LangGraph checkpoint/store 表
 python -m app.cli ingest-knowledge  将 knowledge/*.md 导入话术知识库
-python -m app.cli check-scenarios   校验全部场景 / 评分表 / 题库 / 试卷 YAML
+python -m app.cli check-scenarios   校验场景、评分表与试卷模板 YAML
 python -m app.cli create-admin --userid admin --password ******   创建或重置管理员账号
 python -m app.cli import-recordings [--file data/private/x.json] [--limit N]   导入优质录音（默认经 dbmcp）
 python -m app.cli import-transcripts --file ../data/private/x.json   导入已有转写快照和待审核事件
@@ -75,7 +75,7 @@ def check_scenarios() -> None:
         print(f"  {p.id} {p.name}（{p.kind}，{len(p.sections)} 个部分，及格 {p.pass_score}）")
     print(
         f"校验通过：场景 {len(reg.scenarios)} 个，评分表 {len(reg.rubrics)} 个，"
-        f"题目 {len(exams.questions)} 道，试卷 {len(exams.papers)} 套"
+        f"试卷模板 {len(exams.papers)} 套"
     )
 
 

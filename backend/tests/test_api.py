@@ -21,11 +21,12 @@ pytestmark = pytest.mark.skipif(not TEST_URL, reason="未设置 TEST_DATABASE_UR
 
 
 @pytest.fixture(scope="module")
-def api_settings(tmp_path_factory) -> Settings:
+def api_settings(tmp_path_factory, test_scenarios_dir) -> Settings:
     return Settings(
         _env_file=None,
         app_env="test",
         database_url=TEST_URL,
+        scenarios_dir=test_scenarios_dir,
         llm={"provider": "stub"},
         speech={"asr_provider": "stub", "tts_provider": "stub"},
         admin_userids=["T001"],
@@ -58,7 +59,15 @@ def prepared_db(api_settings: Settings):
     engine = create_engine(TEST_URL)
     with engine.begin() as conn:
         conn.execute(
-            text("TRUNCATE users, practice_sessions, practice_messages, model_usage RESTART IDENTITY CASCADE")
+            text("TRUNCATE users, practice_sessions, practice_messages, model_usage, recordings RESTART IDENTITY CASCADE")
+        )
+        conn.execute(
+            text("""
+            INSERT INTO recordings (source, source_key, audio_url, title, status, tags, customer_type, published, play_count, meta)
+            VALUES ('file', 'api-test-recording', 'https://example.test/audio.mp3', '测试录音',
+                'ready', '{}', '', true, 0, '{"extracted_scenario_ids":["S01"]}'::jsonb)
+            ON CONFLICT (source_key) DO NOTHING
+        """)
         )
     engine.dispose()
 
@@ -99,6 +108,10 @@ async def test_full_practice_flow(client):
     assert cards[0]["department"] == ["客服", "服务"]
     detail = (await client.get("/api/scenarios/S01", headers=h)).json()
     assert "objections" not in json.dumps(detail) and "hidden_needs" not in json.dumps(detail)
+    assert detail["source_recording"]["title"] == "测试录音"
+    assert all(card["id"] != "S03" for card in cards)
+    assert (await client.get("/api/scenarios/S03", headers=h)).status_code == 404
+    assert (await client.post("/api/sessions", json={"scenario_id": "S03"}, headers=h)).status_code == 404
 
     s = (await client.post("/api/sessions", json={"scenario_id": "S01"}, headers=h)).json()
     sid = s["id"]

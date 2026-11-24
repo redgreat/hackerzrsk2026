@@ -18,11 +18,12 @@ pytestmark = pytest.mark.skipif(not TEST_URL, reason="未设置 TEST_DATABASE_UR
 
 
 @pytest.fixture(scope="module")
-def train_settings(tmp_path_factory) -> Settings:
+def train_settings(tmp_path_factory, test_scenarios_dir) -> Settings:
     return Settings(
         _env_file=None,
         app_env="test",
         database_url=TEST_URL,
+        scenarios_dir=test_scenarios_dir,
         llm={"provider": "stub"},
         admin_userids=["ADMIN1"],
         frontend_dist=tmp_path_factory.mktemp("nodist"),
@@ -46,7 +47,7 @@ def train_db(train_settings: Settings):
         conn.execute(
             text(
                 "TRUNCATE users, practice_sessions, practice_messages, model_usage, recordings, "
-                "recording_questions, exam_attempts, exam_publications, knowledge_chunks RESTART IDENTITY CASCADE"
+                "recording_questions, exam_questions, exam_attempts, exam_publications, knowledge_chunks RESTART IDENTITY CASCADE"
             )
         )
     engine.dispose()
@@ -146,7 +147,7 @@ async def test_publish_recording_with_reviewed_learning_content(client):
     rows = (await client.get("/api/admin/recordings?q=学习录音", headers=admin)).json()["items"]
     rid = rows[0]["id"]
     path = f"/api/admin/recordings/{rid}"
-    fields = {"extracted_scenario_ids": ["C08", "C08"], "learning_note": "留意如何确认当通行动。"}
+    fields = {"extracted_scenario_ids": ["S02", "S02"], "learning_note": "留意如何确认当通行动。"}
     assert (await client.patch(path, json=fields, headers=user)).status_code == 403
     assert (await client.patch(path, json=fields, headers=admin)).status_code == 200
     assert (await client.get(f"/api/recordings/{rid}", headers=user)).status_code == 404
@@ -156,9 +157,9 @@ async def test_publish_recording_with_reviewed_learning_content(client):
     recordings = (await client.get("/api/recordings?q=学习录音", headers=user)).json()
     detail = (await client.get(f"/api/recordings/{rid}", headers=user)).json()
     assert detail["learning_note"] == fields["learning_note"]
-    assert [scenario["id"] for scenario in detail["extracted_scenarios"]] == ["C08"]
+    assert [scenario["id"] for scenario in detail["extracted_scenarios"]] == ["S02"]
     assert recordings["items"][0]["extracted_scenarios"] == detail["extracted_scenarios"]
-    assert (await client.get("/api/scenarios/C08", headers=user)).status_code == 200
+    assert (await client.get("/api/scenarios/S02", headers=user)).status_code == 200
 
 
 async def test_dbmcp_import_reuses_recording_id_and_versions_transcript(client, monkeypatch):
@@ -281,7 +282,77 @@ async def _send(client, h, sid, text_: str) -> list[dict]:
     return events
 
 
-async def test_self_test_quiz(client):
+@pytest.fixture
+async def exam_pool(client):
+    import yaml
+    from sqlalchemy import select
+
+    from app.db.models import ExamQuestion, Recording
+
+    container = client._transport.app.state.container
+    async with container.session_factory() as db, db.begin():
+        if await db.scalar(select(Recording.id).where(Recording.source_key == "exam-recording")):
+            return
+        drafts = {}
+        for index in (1, 2):
+            sid = f"R-test-{index}"
+            scene = container.scenarios.get("S01").model_copy(update={"id": sid, "name": f"录音练习 {index}"})
+            drafts[sid] = {"status": "approved", "yaml": yaml.safe_dump(scene.model_dump(mode="json"))}
+        db.add(
+            Recording(
+                source_key="exam-recording",
+                audio_url="https://example.test/audio.mp3",
+                published=True,
+                meta={"scenario_drafts": drafts},
+            )
+        )
+        db.add_all(
+            [
+                ExamQuestion(
+                    scenario_id="R-test-1",
+                    scenario_name="录音练习 1",
+                    status="approved",
+                    stem_hash=f"test-stem-{index}",
+                    topic_hash=f"test-topic-{index}",
+                    content={
+                        "type": "single",
+                        "topic": f"考点 {index}",
+                        "stem": f"合规题 {index}",
+                        "options": ["正确", "错误"],
+                        "answer": [0],
+                        "explanation": "测试解析",
+                    },
+                )
+                for index in range(14)
+            ]
+        )
+
+
+async def test_generate_and_review_exam_questions(client, exam_pool):
+    admin = await _admin(client)
+    user = await _register_and_approve(client, admin, "N199")
+    base = "/api/admin/exams/questions"
+    args = {"scenario_id": "R-test-1"}
+    assert (await client.post(f"{base}/generate", json=args, headers=user)).status_code == 403
+    first = await client.post(f"{base}/generate", json=args, headers=admin)
+    assert first.json() == {"created": 1, "duplicates": 0}
+    second = await client.post(f"{base}/generate", json=args, headers=admin)
+    assert second.json() == {"created": 0, "duplicates": 1}
+    pending = (await client.get(f"{base}?status=pending", headers=admin)).json()
+    assert pending["total"] == 1
+    question_id = pending["items"][0]["id"]
+    assert pending["items"][0]["answer"] == [0]
+    assert (
+        await client.patch(f"{base}/{question_id}", json={"status": "approved"}, headers=admin)
+    ).status_code == 200
+    assert (await client.get(f"{base}?status=approved", headers=admin)).json()["total"] == 15
+    assert (
+        await client.patch(f"{base}/{question_id}", json={"status": "archived"}, headers=admin)
+    ).status_code == 200
+    assert (await client.get(f"{base}?status=archived", headers=admin)).json()["total"] == 1
+
+
+async def test_self_test_quiz(client, exam_pool):
     admin = await _admin(client)
     user = await _register_and_approve(client, admin, "N200")
     papers = (await client.get("/api/exams", headers=user)).json()
@@ -310,17 +381,15 @@ async def test_self_test_quiz(client):
     assert (await client.post("/api/exams/T01/start", headers=user)).json()["id"] != a["id"]
 
 
-async def test_formal_exam_with_roleplay(client):
+async def test_formal_exam_with_roleplay(client, exam_pool):
     admin = await _admin(client)
     user = await _register_and_approve(client, admin, "N300")
-    assert (await client.post("/api/exams/E01/start", headers=user)).status_code == 404
-    assert (await client.post("/api/admin/exams/papers/E01/publish", headers=user)).status_code == 403
-    assert (await client.post("/api/admin/exams/papers/E01/publish", headers=admin)).status_code == 200
     a = (await client.post("/api/exams/E01/start", headers=user)).json()
     types = [s["type"] for s in a["sections"]]
     assert types == ["quiz", "roleplay"]
     assert a["deadline_at"]
     quiz = a["sections"][0]["items"]
+    assert len(quiz) == 12 and len({q["key"] for q in quiz}) == 12
     await client.put(
         f"/api/exams/attempts/{a['id']}/answers", json={"answers": {quiz[0]["key"]: [0]}}, headers=user
     )
@@ -372,7 +441,7 @@ async def test_formal_exam_with_roleplay(client):
     assert {p["id"] for p in papers} >= {"E01", "T01"}
 
 
-async def test_exam_deadline_auto_submit(client, train_settings):
+async def test_exam_deadline_auto_submit(client, exam_pool, train_settings):
     from datetime import UTC, datetime, timedelta
 
     admin = await _admin(client)
@@ -391,35 +460,53 @@ async def test_exam_deadline_auto_submit(client, train_settings):
     assert v["status"] == "submitted" and v["score"] == 0
 
 
-async def test_publication_pins_scenario_and_rubric_through_scoring_retry(client, monkeypatch):
+async def test_attempt_pins_scenario_and_rubric_through_scoring_retry(client, exam_pool, monkeypatch):
+    import yaml
+    from sqlalchemy import select
+
     from app.core.errors import UpstreamError
+    from app.db.models import Recording
+    from app.services.scenarios import Scenario
 
     app = client._transport.app
     container = app.state.container
     admin = await _admin(client)
     user = await _register_and_approve(client, admin, "N510")
     other = await _register_and_approve(client, admin, "N511")
-    publish = "/api/admin/exams/papers/E01/publish"
-    assert (await client.post(publish, headers=admin)).status_code == 200
-    scenario = container.scenarios.get("C08")
+    old = (await client.post("/api/exams/E01/start", headers=user)).json()
+    async with container.session_factory() as db, db.begin():
+        recording = await db.scalar(select(Recording).where(Recording.source_key == "exam-recording"))
+        drafts = dict(recording.meta["scenario_drafts"])
+        entry = dict(drafts["R-test-1"])
+        scenario = Scenario.model_validate(yaml.safe_load(entry["yaml"]))
+        revised = scenario.model_copy(update={"name": "新版本"})
+        drafts[scenario.id] = {**entry, "yaml": yaml.safe_dump(revised.model_dump(mode="json"))}
+        recording.meta = {**recording.meta, "scenario_drafts": drafts}
     old_rubric = container.scenarios.rubric_for(scenario)
-    monkeypatch.setitem(container.scenarios.scenarios, "C08", scenario.model_copy(update={"name": "新版本"}))
     monkeypatch.setitem(
         container.scenarios.rubrics, old_rubric.id, old_rubric.model_copy(update={"name": "新评分表"})
     )
-    old = (await client.post("/api/exams/E01/start", headers=user)).json()
-    assert old["sections"][1]["items"][0]["scenario_name"] == scenario.name
+    assert (
+        next(item for item in old["sections"][1]["items"] if item["scenario_id"] == scenario.id)[
+            "scenario_name"
+        ]
+        == scenario.name
+    )
     assert "scenario_snapshot" not in old["sections"][1]["items"][0]
 
-    assert (await client.post(publish, headers=admin)).status_code == 200
     new = (await client.post("/api/exams/E01/start", headers=other)).json()
-    assert new["sections"][1]["items"][0]["scenario_name"] == "新版本"
+    assert (
+        next(item for item in new["sections"][1]["items"] if item["scenario_id"] == scenario.id)[
+            "scenario_name"
+        ]
+        == "新版本"
+    )
     assert (await client.post("/api/exams/E01/start", headers=user)).json()["id"] == old["id"]
 
     aid = old["id"]
     roleplay = f"/api/exams/attempts/{aid}/roleplay"
     opened = await asyncio.gather(
-        *[client.post(roleplay, json={"key": "s:C08"}, headers=user) for _ in range(2)]
+        *[client.post(roleplay, json={"key": f"s:{scenario.id}"}, headers=user) for _ in range(2)]
     )
     assert opened[0].json() == opened[1].json()
     sid = opened[0].json()["session_id"]
