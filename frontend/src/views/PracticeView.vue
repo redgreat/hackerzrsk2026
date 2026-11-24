@@ -369,6 +369,7 @@ async function endPractice() {
   line-height: 1.6;
 }
 .toolbar {
+  flex-shrink: 0;
   background: #fff;
   border-top: 1px solid #eef0f3;
   padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
