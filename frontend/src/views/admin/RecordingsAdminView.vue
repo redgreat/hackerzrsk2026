@@ -14,6 +14,7 @@ const page = ref(1)
 const status = ref('')
 const published = ref<boolean | ''>('')
 const loading = ref(false)
+const importing = ref(false)
 
 async function load() {
   loading.value = true
@@ -27,6 +28,39 @@ async function load() {
   }
 }
 onMounted(load)
+
+async function importDbmcp() {
+  let value: string
+  try {
+    const input = await ElMessageBox.prompt('填写上游录音 ID 导入指定录音，留空导入最新 5 条优质录音。', '从 DBMCP 导入', {
+      inputValidator: (text) => !text?.trim() ||
+        (/^[1-9]\d*$/.test(text.trim()) && Number.isSafeInteger(Number(text))) || '请输入有效的录音 ID',
+    })
+    value = input.value?.trim() ?? ''
+  } catch {
+    return
+  }
+  importing.value = true
+  try {
+    const result = await api.admin.importDbmcpRecordings(value ? Number(value) : undefined)
+    if (result.found) {
+      ElMessage({
+        type: result.linked ? 'success' : 'warning',
+        message: `新增 ${result.created} 条，已有 ${result.existing} 条，关联转写 ${result.linked} 条，跳过无可用转写 ${result.missing_transcript} 条，跳过无可用地址 ${result.skipped_url} 条`,
+      })
+    } else {
+      ElMessage.warning('未查到符合条件的优质录音')
+    }
+    status.value = ''
+    published.value = ''
+    page.value = 1
+    await load()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    importing.value = false
+  }
+}
 
 async function add() {
   const { value: url } = await ElMessageBox.prompt('粘贴录音地址（OSS / 呼叫中心 URL）', '添加录音', {
@@ -52,6 +86,7 @@ const st = (s: RecordingStatus) => RECORDING_STATUS[s] ?? { label: s, type: 'inf
     </el-select>
     <el-button type="primary" @click="page = 1; load()">刷新</el-button>
     <el-button @click="add">添加录音</el-button>
+    <el-button type="primary" :loading="importing" @click="importDbmcp">从 DBMCP 导入</el-button>
   </div>
 
   <el-table :data="items" v-loading="loading" border>

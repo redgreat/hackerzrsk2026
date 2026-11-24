@@ -101,41 +101,44 @@ def masked(value):
     return value
 
 
+async def store_snapshot(db, c: Case) -> tuple[int, bool]:
+    values = dict(
+        source_key=c.case_key,
+        source_hash=c.source_sha256,
+        source_file=c.source_file,
+        source_labels=mask_pii(c.source_labels),
+        segments=masked([s.model_dump() for s in c.segments]),
+        speaker_mapping=c.speaker_mapping,
+        speaker_mapping_status=c.speaker_mapping_status,
+        time_unit=c.time_unit,
+        privacy_status="pending",
+    )
+    sid = await db.scalar(
+        insert(TranscriptSnapshot)
+        .values(**values)
+        .on_conflict_do_nothing(index_elements=["source_key", "source_hash"])
+        .returning(TranscriptSnapshot.id)
+    )
+    if sid is not None:
+        return sid, True
+    sid = (
+        await db.execute(
+            select(TranscriptSnapshot.id).where(
+                TranscriptSnapshot.source_key == c.case_key,
+                TranscriptSnapshot.source_hash == c.source_sha256,
+            )
+        )
+    ).scalar_one()
+    return sid, False
+
+
 async def import_batch(sf, batch: ImportBatch) -> dict:
     counts = {"snapshots_created": 0, "events_created": 0}
     async with sf() as db, db.begin():
         snapshots = {}
         for c in batch.cases:
-            values = dict(
-                source_key=c.case_key,
-                source_hash=c.source_sha256,
-                source_file=c.source_file,
-                source_labels=mask_pii(c.source_labels),
-                segments=masked([s.model_dump() for s in c.segments]),
-                speaker_mapping=c.speaker_mapping,
-                speaker_mapping_status=c.speaker_mapping_status,
-                time_unit=c.time_unit,
-                privacy_status="pending",
-            )
-            sid = (
-                await db.execute(
-                    insert(TranscriptSnapshot)
-                    .values(**values)
-                    .on_conflict_do_nothing(index_elements=["source_key", "source_hash"])
-                    .returning(TranscriptSnapshot.id)
-                )
-            ).scalar_one_or_none()
-            if sid is not None:
-                counts["snapshots_created"] += 1
-            else:
-                sid = (
-                    await db.execute(
-                        select(TranscriptSnapshot.id).where(
-                            TranscriptSnapshot.source_key == c.case_key,
-                            TranscriptSnapshot.source_hash == c.source_sha256,
-                        )
-                    )
-                ).scalar_one()
+            sid, created = await store_snapshot(db, c)
+            counts["snapshots_created"] += created
             snapshots[c.case_key] = sid
         for e in batch.events:
             content = masked(e.model_dump())

@@ -17,6 +17,11 @@ class RecordingIn(BaseModel):
     title: str = Field("", max_length=128)
 
 
+class RecordingImportIn(BaseModel):
+    limit: int = Field(5, ge=1, le=10)
+    call_id: int | None = Field(None, ge=1)
+
+
 class RecordingPatch(BaseModel):
     title: str | None = Field(None, max_length=128)
     customer_type: str | None = Field(None, max_length=32)
@@ -70,6 +75,11 @@ async def add_recording(body: RecordingIn, c: ContainerDep, _: AdminDep) -> dict
 @router.get("/recordings/{rid}")
 async def recording(rid: int, c: ContainerDep, _: AdminDep) -> dict:
     return await c.recordings.admin_detail(rid)
+
+
+@router.post("/recordings/import-dbmcp")
+async def import_dbmcp_recordings(body: RecordingImportIn, c: ContainerDep, _: AdminDep) -> dict:
+    return await c.recordings.import_from_dbmcp(body.limit, body.call_id)
 
 
 @router.patch("/recordings/{rid}")

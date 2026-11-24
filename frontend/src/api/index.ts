@@ -97,6 +97,10 @@ export const api = {
     recordings: (q: Query) => get<AdminRecordingPage>(`/admin/recordings?${qs(q)}`),
     addRecording: (audioUrl: string, title: string) =>
       post<{ created: number }>('/admin/recordings', { audio_url: audioUrl, title }),
+    importDbmcpRecordings: (callId?: number) =>
+      post<{ found: number; created: number; existing: number; linked: number; missing_transcript: number; skipped_url: number }>(
+        '/admin/recordings/import-dbmcp', { call_id: callId, limit: 5 },
+      ),
     recording: (id: number | string) => get<RecordingDetail>(`/admin/recordings/${id}`),
     updateRecording: (
       id: number,

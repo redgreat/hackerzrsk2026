@@ -19,8 +19,14 @@ from app.services.knowledge import KnowledgeBase, ParsedChunk
 from app.services.llm import LLMGateway
 from app.services.llm.usage import UsageScope, usage_scope
 from app.services.recording_practices import GeneratedPractices, recording_scenarios
-from app.services.recording_source import RecordingItem, normalize_url
+from app.services.recording_source import (
+    RecordingItem,
+    fetch_recordings_with_transcripts,
+    normalize_url,
+    transcript_case,
+)
 from app.services.scenarios import ScenarioRegistry
+from app.services.transcripts import store_snapshot
 
 
 def check_answer(qtype: str, answer: list[int], chosen: list[int]) -> bool:
@@ -64,6 +70,61 @@ class RecordingService:
                 )
                 created += res.first() is not None
         return created, len(items) - created
+
+    async def import_from_dbmcp(self, limit: int, call_id: int | None) -> dict:
+        cfg = self.settings.recordings
+        rows = await fetch_recordings_with_transcripts(cfg, limit, call_id)
+        counts = dict(found=len(rows), created=0, existing=0, linked=0, missing_transcript=0, skipped_url=0)
+        async with self.sf() as db, db.begin():
+            for row in rows:
+                upstream_id = int(row["call_id"])
+                try:
+                    case = transcript_case(upstream_id, row.get("characters"))
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    case = None
+                if case is None:
+                    counts["missing_transcript"] += 1
+                    continue
+                paths = [
+                    normalize_url(str(row.get(key) or "").strip(), cfg.audio_base_url)
+                    for key in ("url", "alternate_url")
+                    if row.get(key)
+                ]
+                url = next((path for path in paths if path.startswith(("http://", "https://"))), None)
+                if url is None:
+                    counts["skipped_url"] += 1
+                    continue
+                key = f"db{cfg.connection_id}:{upstream_id}"
+                rec = await db.scalar(
+                    select(Recording)
+                    .where(Recording.source_key.in_([key, f"file:{upstream_id}"]))
+                    .order_by((Recording.source_key == key).desc())
+                    .limit(1)
+                    .with_for_update()
+                )
+                if rec is None:
+                    rid = await db.scalar(
+                        insert(Recording)
+                        .values(
+                            source="dbmcp", source_key=key, audio_url=url, title=f"优质录音 #{upstream_id}"
+                        )
+                        .on_conflict_do_nothing(index_elements=["source_key"])
+                        .returning(Recording.id)
+                    )
+                    counts["created" if rid is not None else "existing"] += 1
+                    rec = (
+                        await db.get(Recording, rid)
+                        if rid is not None
+                        else await db.scalar(
+                            select(Recording).where(Recording.source_key == key).with_for_update()
+                        )
+                    )
+                else:
+                    counts["existing"] += 1
+                snapshot_id, _ = await store_snapshot(db, case)
+                rec.meta = {**(rec.meta or {}), "transcript_snapshot_id": snapshot_id}
+                counts["linked"] += 1
+        return counts
 
     async def _record_usage(self, usage: UsageScope, user_id: int | None) -> None:
         if usage.records:

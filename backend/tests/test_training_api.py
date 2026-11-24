@@ -161,6 +161,46 @@ async def test_publish_recording_with_reviewed_learning_content(client):
     assert (await client.get("/api/scenarios/C08", headers=user)).status_code == 200
 
 
+async def test_dbmcp_import_reuses_recording_id_and_versions_transcript(client, monkeypatch):
+    row = {
+        "call_id": 8765432,
+        "url": "https://oss.example.com/dbmcp.mp3",
+        "characters": [{"ChannelId": 0, "BeginTime": 0, "EndTime": 1000, "Text": "请核对办理进度。"}],
+    }
+
+    async def fetch(cfg, limit, call_id):
+        assert limit == 1 and call_id == row["call_id"]
+        return [row]
+
+    monkeypatch.setattr("app.services.recordings.fetch_recordings_with_transcripts", fetch)
+    admin = await _admin(client)
+    user = await _register_and_approve(client, admin, "NDBMCP")
+    route = "/api/admin/recordings/import-dbmcp"
+    body = {"limit": 1, "call_id": row["call_id"]}
+    assert (await client.post(route, headers=user, json=body)).status_code == 403
+    usable = row["characters"]
+    for invalid in (None, "[]", [{"ChannelId": 0, "BeginTime": 0, "EndTime": 1000, "Text": " "}]):
+        row["characters"] = invalid
+        skipped = (await client.post(route, headers=admin, json=body)).json()
+        assert skipped["missing_transcript"] == 1 and skipped["created"] == skipped["linked"] == 0
+    assert (await client.get("/api/admin/recordings?q=8765432", headers=admin)).json()["total"] == 0
+    row["characters"] = usable
+    first = (await client.post(route, headers=admin, json=body)).json()
+    assert first["created"] == first["linked"] == 1
+    existing = (await client.post(route, headers=admin, json=body)).json()
+    assert existing["existing"] == existing["linked"] == 1 and existing["created"] == 0
+    listing = "/api/admin/recordings?q=8765432"
+    items = (await client.get(listing, headers=admin)).json()["items"]
+    assert len(items) == 1 and not items[0]["published"]
+    detail = f"/api/admin/recordings/{items[0]['id']}"
+    snapshot = (await client.get(detail, headers=admin)).json()["transcript_snapshot_id"]
+    row["characters"][0]["Text"] = "请核对处理时间。"
+    assert (await client.post(route, headers=admin, json=body)).json()["existing"] == 1
+    latest = (await client.get(detail, headers=admin)).json()
+    assert latest["transcript_snapshot_id"] != snapshot
+    assert latest["source_transcript"][0]["text"] == "请核对处理时间。"
+
+
 async def test_recording_yaml_review_and_withdrawal(client):
     from uuid import uuid4
 
@@ -198,13 +238,13 @@ async def test_recording_yaml_review_and_withdrawal(client):
         )
     ).status_code == 200
 
-    async def generate():
+    async def generate(existing_ids=()):
         response = await client.post(f"{route}/practices", headers=admin, json={"first": 1, "last": 1})
         assert response.status_code == 200, response.text
-        return response.json()["practice_candidates"][-1]
+        return next(item for item in response.json()["practice_candidates"] if item["id"] not in existing_ids)
 
     accepted = await generate()
-    archived = await generate()
+    archived = await generate({accepted["id"]})
     assert accepted["status"] == "pending" and "scoring:" in accepted["yaml"]
     sid = accepted["id"]
     assert (
