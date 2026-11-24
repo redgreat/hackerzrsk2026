@@ -71,6 +71,7 @@ async function start(p: PaperCard) {
           <van-tag v-if="p.passed" type="success" style="margin-left: 4px">已通过</van-tag>
         </span>
       </div>
+      <p v-if="p.ongoing_attempt_id && p.time_limit_minutes" class="muted">考试进行中，离开页面仍会继续计时。</p>
       <van-button
         type="primary"
         block

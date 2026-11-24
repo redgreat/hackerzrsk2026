@@ -429,6 +429,8 @@ async def test_exam_deadline_auto_submit(client, exam_pool, train_settings):
     admin = await _admin(client)
     user = await _register_and_approve(client, admin, "N400")
     a = (await client.post("/api/exams/E01/start", headers=user)).json()
+    resumed = (await client.post("/api/exams/E01/start", headers=user)).json()
+    assert resumed["id"] == a["id"] and resumed["deadline_at"] == a["deadline_at"]
     engine = create_engine(TEST_URL)
     with engine.begin() as conn:
         conn.execute(
@@ -440,6 +442,7 @@ async def test_exam_deadline_auto_submit(client, exam_pool, train_settings):
     assert r.status_code == 409
     v = (await client.get(f"/api/exams/attempts/{a['id']}", headers=user)).json()
     assert v["status"] == "submitted" and v["score"] == 0
+    assert v["deadline_at"] != a["deadline_at"]
 
 
 async def test_attempt_pins_scenario_and_rubric_through_scoring_retry(client, exam_pool, monkeypatch):

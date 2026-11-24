@@ -16,7 +16,7 @@ const submitting = ref(false)
 const saving = ref(false)
 const deadlineChecked = ref(false)
 let loading = false
-let serverOffset = 0
+let localDeadline: number | undefined
 let timer: number | undefined
 
 const isQuiz = (sec: AttemptDetail['sections'][number]) => sec.type !== 'roleplay'
@@ -29,8 +29,8 @@ const answered = computed(
 const quizTotal = computed(() => a.value?.sections.filter(isQuiz).reduce((n, s) => n + s.items.length, 0) ?? 0)
 
 function tick() {
-  if (!a.value?.deadline_at) return
-  const left = Math.max(0, new Date(a.value.deadline_at).getTime() - Date.now() - serverOffset)
+  if (localDeadline === undefined) return
+  const left = Math.max(0, localDeadline - performance.now())
   const s = Math.ceil(left / 1000)
   remaining.value = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
@@ -40,7 +40,9 @@ async function load() {
   loading = true
   try {
     a.value = await api.attempt(aid)
-    serverOffset = new Date(a.value.server_time).getTime() - Date.now()
+    localDeadline = a.value.deadline_at
+      ? performance.now() + Date.parse(a.value.deadline_at) - Date.parse(a.value.server_time)
+      : undefined
     tick()
   } catch (e) {
     showFailToast((e as Error).message)
@@ -49,7 +51,24 @@ async function load() {
   }
 }
 
+function resumeClock() {
+  if (document.visibilityState === 'visible' && !submitted.value && !saving.value) void load()
+}
+
+async function leave() {
+  if (saving.value || submitting.value) return
+  if (a.value?.deadline_at && !submitted.value) {
+    try {
+      await showConfirmDialog({ title: '离开试卷', message: '离开后考试继续计时。已保存的答案可以继续作答。', confirmButtonText: '离开' })
+    } catch {
+      return
+    }
+  }
+  await router.push('/exams')
+}
+
 onMounted(async () => {
+  document.addEventListener('visibilitychange', resumeClock)
   timer = window.setInterval(async () => {
     if (a.value?.status === 'in_progress' && a.value.deadline_at) {
       tick()
@@ -61,7 +80,10 @@ onMounted(async () => {
   }, 1000)
   await load()
 })
-onBeforeUnmount(() => window.clearInterval(timer))
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', resumeClock)
+  window.clearInterval(timer)
+})
 
 async function choose(it: QuizItem, idx: number) {
   if (submitted.value || submitting.value || saving.value || remaining.value === '0:00') return
@@ -115,7 +137,7 @@ async function submit() {
 
 <template>
   <div class="page">
-    <van-nav-bar :title="a?.paper_name || '答题'" left-arrow @click-left="router.push('/exams')" />
+    <van-nav-bar :title="a?.paper_name || '答题'" left-arrow @click-left="leave" />
 
     <template v-if="a">
       <p class="page-guide">
