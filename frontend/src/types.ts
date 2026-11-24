@@ -334,6 +334,7 @@ export interface RecordingPage extends Paged<RecordingCard & Pick<RecordingDetai
 }
 
 export interface AdminRecordingPage extends Paged<RecordingCard & { pending_questions: number }> {
+  can_clear_recordings: boolean
   status_counts: Record<string, number>
 }
 

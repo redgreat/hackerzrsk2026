@@ -15,6 +15,8 @@ const status = ref('')
 const published = ref<boolean | ''>('')
 const loading = ref(false)
 const importing = ref(false)
+const canClear = ref(false)
+const clearing = ref(false)
 
 async function load() {
   loading.value = true
@@ -23,11 +25,33 @@ async function load() {
     items.value = r.items
     total.value = r.total
     statusCounts.value = r.status_counts
+    canClear.value = r.can_clear_recordings
   } finally {
     loading.value = false
   }
 }
 onMounted(load)
+
+async function clearRecordingData() {
+  try {
+    await ElMessageBox.confirm('将清除录音、录音题目、派生练习和未被知识案例引用的录音转写。此操作无法在页面撤销。', '清空录音数据', {
+      type: 'warning', confirmButtonText: '确认清空', cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  clearing.value = true
+  try {
+    const result = await api.admin.clearRecordingData()
+    ElMessage.success(`已删除 ${result.recordings} 条录音和 ${result.transcripts} 份转写快照`)
+    page.value = 1
+    await load()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    clearing.value = false
+  }
+}
 
 async function importDbmcp() {
   let value: string
@@ -87,6 +111,8 @@ const st = (s: RecordingStatus) => RECORDING_STATUS[s] ?? { label: s, type: 'inf
     <el-button type="primary" @click="page = 1; load()">刷新</el-button>
     <el-button @click="add">添加录音</el-button>
     <el-button type="primary" :loading="importing" @click="importDbmcp">从 DBMCP 导入</el-button>
+    <el-button v-if="canClear" type="danger" plain :loading="clearing" :disabled="importing" @click="clearRecordingData">清空录音数据</el-button>
+    <span v-if="canClear" class="clear-note">用于重新测试导入。清空本地录音和关联练习，保留历史成绩和上游数据。</span>
   </div>
 
   <el-table :data="items" v-loading="loading" border>
@@ -115,3 +141,10 @@ const st = (s: RecordingStatus) => RECORDING_STATUS[s] ?? { label: s, type: 'inf
 
   <el-pagination v-model:current-page="page" :total="total" :page-size="20" layout="total, prev, pager, next" style="margin-top: 12px" @change="load" />
 </template>
+
+<style scoped>
+.clear-note {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+</style>

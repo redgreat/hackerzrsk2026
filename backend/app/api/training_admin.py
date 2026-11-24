@@ -59,7 +59,8 @@ async def recordings(
     page: int = 1,
     size: int = 20,
 ) -> dict:
-    return await c.recordings.admin_list(status, published, q, page, size)
+    result = await c.recordings.admin_list(status, published, q, page, size)
+    return {**result, "can_clear_recordings": c.settings.app_env == "dev"}
 
 
 @router.post("/recordings")
@@ -80,6 +81,11 @@ async def recording(rid: int, c: ContainerDep, _: AdminDep) -> dict:
 @router.post("/recordings/import-dbmcp")
 async def import_dbmcp_recordings(body: RecordingImportIn, c: ContainerDep, _: AdminDep) -> dict:
     return await c.recordings.import_from_dbmcp(body.limit, body.call_id)
+
+
+@router.delete("/recordings")
+async def clear_recordings(c: ContainerDep, _: AdminDep) -> dict:
+    return await c.recordings.clear_recording_data()
 
 
 @router.patch("/recordings/{rid}")

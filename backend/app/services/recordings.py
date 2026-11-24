@@ -6,13 +6,13 @@ from datetime import UTC, datetime
 
 import yaml
 from langchain_core.messages import HumanMessage, SystemMessage
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.core.errors import AppError, Conflict, NotFound
-from app.db.models import Recording, RecordingQuestion, TranscriptSnapshot
+from app.core.errors import AppError, Conflict, Forbidden, NotFound
+from app.db.models import KnowledgeChunk, KnowledgeEvent, Recording, RecordingQuestion, TranscriptSnapshot
 from app.db.usage import add_usage
 from app.services.guard import mask_pii
 from app.services.knowledge import KnowledgeBase, ParsedChunk
@@ -125,6 +125,21 @@ class RecordingService:
                 rec.meta = {**(rec.meta or {}), "transcript_snapshot_id": snapshot_id}
                 counts["linked"] += 1
         return counts
+
+    async def clear_recording_data(self) -> dict:
+        if self.settings.app_env != "dev":
+            raise Forbidden("仅开发环境可清空录音数据")
+        async with self.sf() as db, db.begin():
+            await db.execute(text("LOCK TABLE recordings IN SHARE ROW EXCLUSIVE MODE"))
+            await db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.source.like("recording:%")))
+            recordings = await db.execute(delete(Recording))
+            snapshots = await db.execute(
+                delete(TranscriptSnapshot).where(
+                    TranscriptSnapshot.source_key.like("recall-ai:%"),
+                    ~select(KnowledgeEvent.id).where(KnowledgeEvent.snapshot_id == TranscriptSnapshot.id).exists(),
+                )
+            )
+            return {"recordings": recordings.rowcount, "transcripts": snapshots.rowcount}
 
     async def _record_usage(self, usage: UsageScope, user_id: int | None) -> None:
         if usage.records:

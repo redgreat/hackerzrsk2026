@@ -27,7 +27,7 @@ import type {
   UsagePage,
   User,
 } from '@/types'
-import { get, patch, post, put, rawFetch } from './http'
+import { get, patch, post, put, rawFetch, request } from './http'
 
 type Query = Record<string, string | number | null | undefined>
 
@@ -95,6 +95,7 @@ export const api = {
     resetPassword: (id: number, password: string) => post<{ ok: boolean }>(`/admin/accounts/${id}/password`, { password }),
 
     recordings: (q: Query) => get<AdminRecordingPage>(`/admin/recordings?${qs(q)}`),
+    clearRecordingData: () => request<{ recordings: number; transcripts: number }>('/admin/recordings', { method: 'DELETE' }),
     addRecording: (audioUrl: string, title: string) =>
       post<{ created: number }>('/admin/recordings', { audio_url: audioUrl, title }),
     importDbmcpRecordings: (callId?: number) =>
