@@ -26,7 +26,7 @@ from app.services.knowledge import KnowledgeBase, ParsedChunk
 from app.services.llm import LLMGateway
 from app.services.llm.usage import UsageScope, usage_scope
 from app.services.practice import PracticeService
-from app.services.recording_source import RecordingItem
+from app.services.recording_source import RecordingItem, normalize_url
 from app.services.scenarios import ScenarioRegistry
 
 logger = logging.getLogger(__name__)
@@ -97,7 +97,8 @@ class RecordingService:
                 raise Conflict("该录音正在处理中")
             need_asr = force or not rec.transcript
             rec.status, rec.error = ("transcribing" if need_asr else "analyzing"), None
-            url, task_id = rec.audio_url, rec.asr_task_id if not force else None
+            url = normalize_url(rec.audio_url, self.settings.recordings.audio_base_url)
+            task_id = rec.asr_task_id if not force else None
         with usage_scope() as usage:
             try:
                 if need_asr:
