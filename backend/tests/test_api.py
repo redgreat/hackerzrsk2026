@@ -274,3 +274,28 @@ async def test_admin_endpoints(client):
     usage = (await client.get("/api/admin/usage?purpose=coach", headers=h)).json()
     assert usage["total"] >= 1 and all(r["purpose"] == "coach" for r in usage["items"])
     assert isinstance((await client.get("/api/admin/knowledge", headers=h)).json(), list)
+
+
+async def test_publish_rubric_without_changing_open_session(client):
+    admin = await _login(client, "T001")
+    employee = await _login(client, "T002")
+    path = "/api/admin/rubric"
+    assert (await client.get(path, headers=employee)).status_code == 403
+    initial = (await client.get(path, headers=admin)).json()["versions"][0]
+
+    # S01 是测试示例，改为使用和录音练习相同的贷后评分表。
+    app = client._transport.app
+    scene = app.state.container.scenarios.scenarios["S01"]
+    scene.scoring = initial["rubric"]["id"]
+    old = (await client.post("/api/sessions", json={"scenario_id": "S01"}, headers=employee)).json()
+    body = {**initial["rubric"], "name": "新版贷后评分", "base_version": initial["version"]}
+    response = await client.post(path, headers=admin, json=body)
+    assert response.json() == {"version": initial["version"] + 1}
+    try:
+        assert (await client.post(path, headers=admin, json=body)).status_code == 409
+        detail = await client.get("/api/scenarios/S01", headers=employee)
+        assert detail.json()["rubric"]["name"] == body["name"]
+        report = await client.post(f"/api/sessions/{old['id']}/end", headers=employee)
+        assert report.json()["rubric"] == initial["rubric"]["name"]
+    finally:
+        await client.post(path, headers=admin, json={**initial["rubric"], "base_version": initial["version"] + 1})

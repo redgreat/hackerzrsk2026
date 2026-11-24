@@ -201,6 +201,21 @@ export interface TrendPoint {
   cost_yuan: number
 }
 
+export interface RubricForm {
+  name: string
+  dimensions: { name: string; weight: number; good: string; bad: string }[]
+  hint_penalty: number
+  hint_penalty_max: number
+  red_lines: string[]
+  red_line_cap: number
+}
+
+export interface RubricVersion {
+  version: number
+  created_at: string | null
+  rubric: RubricForm
+}
+
 export interface AdminScenario {
   id: string
   name: string
@@ -425,33 +440,4 @@ export interface AttemptDetail extends AttemptSummary {
 
 export interface AdminAttempt extends AttemptSummary {
   user: { id: number; userid: string; name: string; department: string }
-}
-
-
-export interface KnowledgeReviewData {
-  title: string
-  labels: { customer_problem: string; stage: string; agent_actions: string[]; observed_result: string }
-  summary: string
-  applicability_limits: string[]
-}
-export interface KnowledgeEventCard {
-  cleanup_status?: string
-  id: number; title: string; event_key: string; source_key: string
-  status: string; revision: number; segment_start: number; segment_end: number
-}
-export interface KnowledgeEventDetail extends KnowledgeEventCard {
-  cleanups: { id: number; status: string; model: string; created_at: string; result: {
-    title: string; summary: string; dialogue: { speaker: string; text: string; source_seqs: number[]; added: boolean }[];
-    changes: string[]; issues: { severity: string; category: string; description: string }[]; checks: string[]; learning_points: string[]
-  } }[]
-  data: KnowledgeReviewData; original: KnowledgeReviewData
-  evidence_seqs: number[]
-  segments: { seq: number; channel: number; start_raw: number; end_raw: number; text: string }[]
-  speaker_mapping: Record<string, string>; speaker_mapping_status: string
-  privacy_status: string; time_unit: string; policy_verification: string; candidate_use: string
-  history: { revision: number; action: string; user_id: number; at: string; note: string; data: KnowledgeReviewData }[]
-  retrieval_enabled: boolean
-}
-export interface KnowledgeReviewIn {
-  expected_revision: number; action: 'save' | 'approve' | 'reject'; data: KnowledgeReviewData; note: string
 }

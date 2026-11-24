@@ -21,6 +21,7 @@ from app.db.usage import add_usage
 from app.graph.state import PracticeContext
 from app.services.llm.usage import UsageScope, usage_scope
 from app.services.recording_practices import require_available
+from app.services.rubrics import current_rubric
 from app.services.scenarios import Scenario
 
 logger = logging.getLogger(__name__)
@@ -179,8 +180,9 @@ class PracticeService:
             scenario = (
                 Scenario.model_validate(scenario_snapshot["scenario"]) if scenario_snapshot else current
             )
-            if scenario_snapshot is None and scenario_id not in self.ctx.scenarios.scenarios:
-                scenario_snapshot = self.ctx.scenarios.snapshot(scenario)
+            if scenario_snapshot is None:
+                rubric = await current_rubric(db, self.ctx.scenarios, scenario.scoring)
+                scenario_snapshot = self.ctx.scenarios.snapshot(scenario, rubric)
             db.add(
                 PracticeSession(
                     id=sid,

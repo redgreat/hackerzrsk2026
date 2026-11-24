@@ -125,7 +125,8 @@ class KnowledgeBase:
         return vectors
 
     async def ingest_dir(self, root: Path) -> int:
-        return await self.ingest_chunks(await asyncio.to_thread(parse_dir, root))
+        chunks = await asyncio.to_thread(parse_dir, root)
+        return await self.ingest_chunks(chunks, replace_sources={chunk.source for chunk in chunks})
 
     async def replace_source(self, source: str, chunks: list[ParsedChunk]) -> int:
         """按来源整体替换（如某条已发布录音的亮点话术）；chunks 为空即删除。"""
@@ -133,7 +134,7 @@ class KnowledgeBase:
             await db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.source == source))
         return await self.ingest_chunks(chunks)
 
-    async def ingest_chunks(self, chunks: list[ParsedChunk]) -> int:
+    async def ingest_chunks(self, chunks: list[ParsedChunk], *, replace_sources: set[str] | None = None) -> int:
         if not chunks:
             return 0
         vectors = (
@@ -142,6 +143,8 @@ class KnowledgeBase:
             else [None] * len(chunks)
         )
         async with self.session_factory() as db, db.begin():
+            if replace_sources:
+                await db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.source.in_(replace_sources)))
             for c, vec in zip(chunks, vectors, strict=True):
                 stmt = insert(KnowledgeChunk).values(
                     source=c.source,

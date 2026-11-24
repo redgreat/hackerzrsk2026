@@ -34,7 +34,7 @@ def test_parse_knowledge(settings: Settings):
     root = settings.knowledge_dir
     chunks = parse_markdown(root / "客户服务话术.md", root)
     assert len(chunks) >= 3
-    assert chunks[0].scenario_ids == ["S02", "S03"]
+    assert all(not chunk.scenario_ids for chunk in chunks)
     assert "/" in chunks[0].title
 
 

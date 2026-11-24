@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.deps import ContainerDep, UserDep
 from app.core.errors import NotFound
 from app.services.recording_practices import available_scenarios, published_scenarios
+from app.services.rubrics import current_rubric
 from app.services.scenarios import Scenario
 
 router = APIRouter(prefix="/scenarios", tags=["scenarios"])
@@ -37,7 +38,7 @@ async def get_scenario(scenario_id: str, c: ContainerDep, _: UserDep) -> dict:
         if entry is None:
             raise NotFound("练习不存在或暂未发布")
         s, rec = entry
-    rubric = c.scenarios.rubric_for(s)
+        rubric = await current_rubric(db, c.scenarios, s.scoring)
     # 只返回给员工看的信息；隐藏需求、异议、阈值不下发
     return {
         **_card(s),

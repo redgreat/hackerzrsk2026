@@ -84,7 +84,7 @@ class Scenario(BaseModel):
 
 class Dimension(BaseModel):
     name: str
-    weight: float = Field(gt=0)
+    weight: float = Field(gt=0, allow_inf_nan=False)
     good: str = ""
     bad: str = ""
 
@@ -147,8 +147,8 @@ class ScenarioRegistry:
     def rubric_for(self, scenario: Scenario) -> Rubric:
         return self.rubrics[scenario.scoring]
 
-    def snapshot(self, scenario: Scenario) -> dict:
+    def snapshot(self, scenario: Scenario, rubric: Rubric | None = None) -> dict:
         return {
             "scenario": scenario.model_dump(mode="json"),
-            "rubric": self.rubric_for(scenario).model_dump(mode="json"),
+            "rubric": (rubric or self.rubric_for(scenario)).model_dump(mode="json"),
         }

@@ -177,6 +177,14 @@ class RecordingQuestion(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="pending", comment="pending/approved/rejected")
 
 
+class RubricVersion(TimestampMixin, Base):
+    __tablename__ = "rubric_versions"
+
+    rubric_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    content: Mapped[dict] = mapped_column(JSONB)
+
+
 class ExamPublication(Base):
     __tablename__ = "exam_publications"
 

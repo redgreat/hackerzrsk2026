@@ -23,6 +23,7 @@ from app.services.exam_question_bank import ExamQuestionBank
 from app.services.practice import PracticeService
 from app.services.recording_practices import available_scenarios, require_available
 from app.services.recordings import RecordingService
+from app.services.rubrics import current_rubric
 from app.services.scenarios import ScenarioRegistry
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,7 @@ class ExamService:
         sections = []
         used_questions: set[int] = set()
         used_roleplays: set[str] = set()
+        rubrics = {}
         for s in paper.sections:
             items: list[dict] = []
             if s.type == "quiz":
@@ -160,13 +162,15 @@ class ExamService:
                 for sid in ids:
                     used_roleplays.add(sid)
                     sc = candidates[sid]
+                    if sc.scoring not in rubrics:
+                        rubrics[sc.scoring] = await current_rubric(db, self.scenarios, sc.scoring)
                     items.append(
                         {
                             "key": f"s:{sid}",
                             "scenario_id": sid,
                             "scenario_name": sc.name,
                             "session_id": None,
-                            "scenario_snapshot": self.scenarios.snapshot(sc),
+                            "scenario_snapshot": self.scenarios.snapshot(sc, rubrics[sc.scoring]),
                         }
                     )
             if paper.shuffle and s.type != "roleplay":

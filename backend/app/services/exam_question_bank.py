@@ -19,6 +19,7 @@ from app.services.llm import LLMGateway
 from app.services.llm.usage import usage_scope
 from app.services.recording_practices import available_scenarios
 from app.services.recording_rules import mask_transcript_text
+from app.services.rubrics import current_rubric
 from app.services.scenarios import ScenarioRegistry
 
 
@@ -102,7 +103,7 @@ class ExamQuestionBank:
                     .limit(80)
                 )
             ).all()
-        rubric = self.scenarios.rubric_for(scene)
+            rubric = await current_rubric(db, self.scenarios, scene.scoring)
         training = {
             "背景": mask_transcript_text(scene.background),
             "目标": mask_transcript_text(scene.goal),
