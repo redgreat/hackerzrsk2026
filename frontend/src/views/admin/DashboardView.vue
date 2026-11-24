@@ -34,16 +34,16 @@ const cards = computed(() => {
 })
 
 const option = computed(() => ({
-  tooltip: { trigger: 'axis' },
-  legend: { data: ['练习次数', '平均分'] },
-  grid: { left: 48, right: 48, top: 40, bottom: 30 },
-  xAxis: { type: 'category', data: trend.value.map((t) => t.day.slice(5, 10)) },
+  tooltip: { trigger: 'axis', confine: true },
+  legend: { top: 4, data: ['练习次数', '平均分'] },
+  grid: { left: 58, right: 58, top: 65, bottom: 45 },
+  xAxis: { type: 'category', axisLabel: { hideOverlap: true }, data: trend.value.map((t) => t.day.slice(5, 10)) },
   yAxis: [
     { type: 'value', name: '次数', minInterval: 1 },
-    { type: 'value', name: '均分', min: 0, max: 100 },
+    { type: 'value', name: '均分', min: 0, max: 100, splitLine: { show: false } },
   ],
   series: [
-    { name: '练习次数', type: 'bar', data: trend.value.map((t) => t.sessions), itemStyle: { color: '#8fb8ff' } },
+    { name: '练习次数', type: 'bar', barMaxWidth: 34, data: trend.value.map((t) => t.sessions), itemStyle: { color: '#8fb8ff', borderRadius: [4, 4, 0, 0] } },
     { name: '平均分', type: 'line', yAxisIndex: 1, smooth: true, data: trend.value.map((t) => t.avg_score), itemStyle: { color: '#1f6feb' } },
   ],
 }))
@@ -52,7 +52,7 @@ const option = computed(() => ({
 <template>
   <div>
     <el-row :gutter="16">
-      <el-col v-for="c in cards" :key="c.label" :span="4">
+      <el-col v-for="c in cards" :key="c.label" :xs="12" :sm="8" :xl="4">
         <el-card shadow="never" class="stat">
           <div class="label">{{ c.label }}</div>
           <div class="value">{{ c.value }}</div>
@@ -71,11 +71,12 @@ const option = computed(() => ({
           </el-radio-group>
         </div>
       </template>
-      <VChart :option="option" autoresize style="height: 300px" />
+      <VChart v-if="trend.length" :option="option" autoresize class="trend-chart" />
+      <el-empty v-else description="暂无练习趋势" :image-size="70" />
     </el-card>
 
     <el-row :gutter="16">
-      <el-col :span="12">
+      <el-col :xs="24" :lg="12">
         <el-card shadow="never" class="block">
           <template #header>分场景</template>
           <el-table :data="overview?.by_scenario ?? []" size="small">
@@ -85,7 +86,7 @@ const option = computed(() => ({
           </el-table>
         </el-card>
       </el-col>
-      <el-col :span="12">
+      <el-col :xs="24" :lg="12">
         <el-card shadow="never" class="block">
           <template #header>模型 / 语音调用明细</template>
           <el-table :data="overview?.by_purpose ?? []" size="small">
@@ -132,7 +133,10 @@ const option = computed(() => ({
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
+.trend-chart { height: clamp(250px, 30vh, 340px); }
 .note {
   color: #86909c;
   font-size: 12px;
