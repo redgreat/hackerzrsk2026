@@ -1,4 +1,6 @@
 ﻿# 本地启动：Docker 运行数据库，后端同时托管构建后的前端。
+param([switch]$Lan = $true)
+
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Push-Location $projectRoot
@@ -26,12 +28,28 @@ try {
 
     Push-Location backend
     try {
-        Write-Host '正在启动：http://127.0.0.1:8000（Ctrl+C 停止后端）'
+        Write-Host '电脑访问：http://127.0.0.1:8000'
+        if ($Lan) {
+            $networks = Get-NetIPConfiguration -ErrorAction SilentlyContinue |
+                Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq 'Up' }
+            if (!$networks) {
+                Write-Host '手机访问：请连接 Wi-Fi 后，用 ipconfig 查看电脑 IPv4 地址，再打开 http://电脑IPv4地址:8000'
+            }
+            foreach ($network in $networks) {
+                foreach ($address in $network.IPv4Address) {
+                    if ($address.IPAddress -notlike '169.254.*') {
+                        Write-Host "手机访问（$($network.InterfaceAlias)，同一网络）：http://$($address.IPAddress):8000"
+                    }
+                }
+            }
+        }
+        Write-Host '按 Ctrl+C 停止后端。'
         # 使用 backend 自己的 uv 环境，避免 IDE 激活的根目录环境干扰。
         $previousVirtualEnv = $env:VIRTUAL_ENV
         try {
             Remove-Item Env:VIRTUAL_ENV -ErrorAction SilentlyContinue
-            uv run --locked python -m app
+            $listenAddress = if ($Lan) { '0.0.0.0' } else { '127.0.0.1' }
+            uv run --locked python -m app --host $listenAddress
             if ($LASTEXITCODE -ne 0) { throw '后端启动失败，请查看上方错误。' }
         } finally {
             $env:VIRTUAL_ENV = $previousVirtualEnv
