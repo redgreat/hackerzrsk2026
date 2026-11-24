@@ -75,13 +75,18 @@ onMounted(async () => {
     <el-select v-model="scenarioId" aria-label="来源练习" placeholder="选择已发布的练习" filterable style="width: 290px">
       <el-option v-for="source in sources" :key="source.id" :label="source.name" :value="source.id" />
     </el-select>
-    <el-input-number v-model="count" aria-label="最多生成题数" :min="1" :max="8" />
+    <div class="question-count">
+      <label for="exam-generation-count">本次最多生成</label>
+      <el-input-number id="exam-generation-count" v-model="count" aria-label="本次最多生成题数" :min="1" :max="8" />
+      <span>道</span>
+    </div>
     <el-button type="primary" :loading="generating" :disabled="!scenarioId || !count" @click="generate">AI 生成合规题</el-button>
     <el-select v-model="status" aria-label="审核状态" placeholder="全部状态" clearable style="width: 130px" @change="load(true)">
       <el-option v-for="(name, key) in statusNames" :key="key" :label="name" :value="key" />
     </el-select>
   </div>
-  <p class="muted">E01 每次开考随机抽 12 道可用合规题和 2 场录音对练。新生成的题通过审核后才能抽到。</p>
+  <p class="muted">考点不足或有重复时，实际生成题数可能更少。新题审核为可用后才能被抽到。</p>
+  <p class="muted">E01 每次开考从题库随机抽 12 道可用合规题和 2 场录音对练。</p>
   <el-table :data="items" v-loading="loading" row-key="id" border empty-text="暂无题目">
     <el-table-column type="expand">
       <template #default="{ row }">
@@ -109,6 +114,8 @@ onMounted(async () => {
 
 <style scoped>
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.question-count { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.question-count :deep(.el-input-number) { width: 112px; }
 .review { padding: 4px 24px; }
 .correct { color: #237346; font-weight: 600; }
 </style>
