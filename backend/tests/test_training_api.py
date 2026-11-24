@@ -352,33 +352,14 @@ async def test_generate_and_review_exam_questions(client, exam_pool):
     assert (await client.get(f"{base}?status=archived", headers=admin)).json()["total"] == 1
 
 
-async def test_self_test_quiz(client, exam_pool):
+async def test_retired_exams_are_unavailable(client):
     admin = await _admin(client)
     user = await _register_and_approve(client, admin, "N200")
     papers = (await client.get("/api/exams", headers=user)).json()
-    assert "T02" not in {p["id"] for p in papers}
-    a = (await client.post("/api/exams/T01/start", headers=user)).json()
-    items = a["sections"][0]["items"]
-    assert len(items) == 10 and "answer" not in items[0] and not a["revealed"]
-    # 重复开始返回同一份进行中的卷子
-    assert (await client.post("/api/exams/T01/start", headers=user)).json()["id"] == a["id"]
-
-    r = await client.put(
-        f"/api/exams/attempts/{a['id']}/answers",
-        json={"answers": {it["key"]: [0] for it in items} | {"q:NOPE": [1]}},
-        headers=user,
-    )
-    assert r.json() == {"saved": 10}
-    other = await _register_and_approve(client, admin, "N201")
-    assert (await client.get(f"/api/exams/attempts/{a['id']}", headers=other)).status_code == 403
-
-    res = (await client.post(f"/api/exams/attempts/{a['id']}/submit", headers=user)).json()
-    assert res["status"] == "submitted" and res["revealed"] and res["result"]["total"] == res["score"]
-    assert "answer" in res["sections"][0]["items"][0] and "credit" in res["sections"][0]["items"][0]
-    r = await client.put(f"/api/exams/attempts/{a['id']}/answers", json={"answers": {}}, headers=user)
-    assert r.status_code == 409
-    # 自测不限次
-    assert (await client.post("/api/exams/T01/start", headers=user)).json()["id"] != a["id"]
+    assert {p["id"] for p in papers} == {"E01"}
+    for paper_id in ("T01", "T02", "T03"):
+        response = await client.post(f"/api/exams/{paper_id}/start", headers=user)
+        assert response.status_code == 404
 
 
 async def test_formal_exam_with_roleplay(client, exam_pool):
@@ -438,7 +419,7 @@ async def test_formal_exam_with_roleplay(client, exam_pool):
     d = (await client.get(f"/api/admin/exams/attempts/{a['id']}", headers=admin)).json()
     assert d["revealed"] and d["sections"][0]["items"][0]["answer"]
     papers = (await client.get("/api/admin/exams/papers", headers=admin)).json()
-    assert {p["id"] for p in papers} >= {"E01", "T01"}
+    assert {p["id"] for p in papers if p["enabled"]} == {"E01"}
 
 
 async def test_exam_deadline_auto_submit(client, exam_pool, train_settings):
@@ -446,7 +427,7 @@ async def test_exam_deadline_auto_submit(client, exam_pool, train_settings):
 
     admin = await _admin(client)
     user = await _register_and_approve(client, admin, "N400")
-    a = (await client.post("/api/exams/T03/start", headers=user)).json()
+    a = (await client.post("/api/exams/E01/start", headers=user)).json()
     engine = create_engine(TEST_URL)
     with engine.begin() as conn:
         conn.execute(

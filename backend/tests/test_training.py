@@ -140,7 +140,7 @@ def test_check_answer_helper():
 
 def test_exam_registry_loads(settings, registry):
     reg = ExamRegistry.load(settings.exams_dir, registry)
-    assert {"E01", "T01", "T02", "T03"} <= set(reg.papers)
+    assert {p.id for p in reg.enabled()} == {"E01"}
     assert [section.count for section in reg.papers["E01"].sections] == [12, 2]
 
 
