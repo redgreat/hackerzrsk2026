@@ -1,7 +1,6 @@
 """运维命令：
 
 python -m app.cli init-db           执行 Alembic 迁移 + 创建 LangGraph checkpoint/store 表
-python -m app.cli ingest-knowledge  将 knowledge/*.md 导入话术知识库
 python -m app.cli check-scenarios   校验场景、评分表与试卷模板 YAML
 python -m app.cli create-admin --userid admin --password ******   创建或重置管理员账号
 python -m app.cli import-recordings [--file data/private/x.json] [--limit N]   导入优质录音（默认经 dbmcp）
@@ -38,28 +37,6 @@ def init_db() -> None:
     command.upgrade(Config(str(BACKEND_DIR / "alembic.ini")), "head")
     _run(_setup_langgraph())
     print("数据库初始化完成")
-
-
-async def _ingest() -> int:
-    from app.db.session import create_engine, create_session_factory
-    from app.services.knowledge import KnowledgeBase
-    from app.services.llm import usage_scope
-
-    settings = get_settings()
-    engine = create_engine(settings)
-    try:
-        with usage_scope() as usage:
-            n = await KnowledgeBase(settings, create_session_factory(engine)).ingest_dir(
-                settings.knowledge_dir
-            )
-        print(
-            f"embedding 费用约 {usage.cost_yuan:.4f} 元"
-            if usage.records
-            else "未启用 embedding，使用关键词检索"
-        )
-        return n
-    finally:
-        await engine.dispose()
 
 
 def check_scenarios() -> None:
@@ -173,7 +150,6 @@ def main() -> None:
         "command",
         choices=[
             "init-db",
-            "ingest-knowledge",
             "check-scenarios",
             "create-admin",
             "import-recordings",
@@ -190,8 +166,6 @@ def main() -> None:
     cmd = args.command
     if cmd == "init-db":
         init_db()
-    elif cmd == "ingest-knowledge":
-        print(f"已导入 {_run(_ingest())} 个知识片段")
     elif cmd == "create-admin":
         if not args.userid or not args.password:
             parser.error("create-admin 需要 --userid 和 --password")

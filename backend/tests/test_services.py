@@ -5,7 +5,6 @@ from pydantic import BaseModel
 from app.core.config import ModelPrice, Settings
 from app.core.errors import UpstreamError
 from app.services.guard import mask_pii
-from app.services.knowledge import parse_markdown
 from app.services.llm import LLMGateway, usage_scope
 from app.services.llm.usage import token_cost
 from app.services.scenarios import ScenarioRegistry
@@ -28,14 +27,6 @@ def test_mask_pii():
 def test_token_cost():
     assert float(token_cost(ModelPrice(input=2, output=8), 1_000_000, 500_000)) == 6.0
     assert token_cost(None, 100, 100) == 0
-
-
-def test_parse_knowledge(settings: Settings):
-    root = settings.knowledge_dir
-    chunks = parse_markdown(root / "客户服务话术.md", root)
-    assert len(chunks) >= 3
-    assert all(not chunk.scenario_ids for chunk in chunks)
-    assert "/" in chunks[0].title
 
 
 async def test_gateway_masks_pii_and_records_usage(settings: Settings):

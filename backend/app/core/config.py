@@ -138,7 +138,6 @@ class Settings(BaseSettings):
     admin_userids: list[str] = Field(default_factory=list)
 
     scenarios_dir: Path | None = None
-    knowledge_dir: Path = PROJECT_DIR / "knowledge"
     exams_dir: Path = PROJECT_DIR / "exams"
     frontend_dist: Path = PROJECT_DIR / "frontend" / "dist"
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])

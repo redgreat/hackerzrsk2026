@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import Float, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models import KnowledgeChunk, ModelUsage, PracticeMessage, PracticeSession, User
+from app.db.models import ModelUsage, PracticeMessage, PracticeSession, User
 from app.services.scenarios import ScenarioRegistry
 
 
@@ -281,35 +281,6 @@ def scenarios_admin(registry: ScenarioRegistry) -> list[dict]:
             }
         )
     return out
-
-
-async def list_knowledge(sf: async_sessionmaker[AsyncSession]) -> list[dict]:
-    async with sf() as db:
-        rows = (
-            await db.execute(
-                select(
-                    KnowledgeChunk.id,
-                    KnowledgeChunk.source,
-                    KnowledgeChunk.title,
-                    KnowledgeChunk.tags,
-                    KnowledgeChunk.scenario_ids,
-                    KnowledgeChunk.embedding.is_not(None),
-                    KnowledgeChunk.content,
-                ).order_by(KnowledgeChunk.id)
-            )
-        ).all()
-    return [
-        {
-            "id": i,
-            "source": src,
-            "title": t,
-            "tags": tags,
-            "scenario_ids": sids,
-            "has_embedding": emb,
-            "preview": content[:120],
-        }
-        for i, src, t, tags, sids, emb, content in rows
-    ]
 
 
 def _iso(v: datetime | None) -> str | None:

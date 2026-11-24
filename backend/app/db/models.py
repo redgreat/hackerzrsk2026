@@ -121,6 +121,18 @@ class ModelUsage(TimestampMixin, Base):
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class KnowledgeScript(TimestampMixin, Base):
+    __tablename__ = "knowledge_scripts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    category: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(256))
+    content: Mapped[str] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    tags: Mapped[list[str]] = mapped_column(ARRAY(String(64)))
+    scenario_ids: Mapped[list[str]] = mapped_column(ARRAY(String(32)))
+
+
 class KnowledgeChunk(TimestampMixin, Base):
     __tablename__ = "knowledge_chunks"
     __table_args__ = {"comment": "话术知识库（RAG，内容必须已脱敏）"}

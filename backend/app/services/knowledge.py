@@ -1,30 +1,25 @@
-"""话术知识库（RAG）：knowledge/*.md → knowledge_chunks（pgvector）。
+"""话术知识库（RAG）：数据库话术与录音参考 → knowledge_chunks（pgvector）。
 
 - 开启 embedding：向量相似度检索（cosine）；
 - 未开启：按场景过滤 + 字符二元组重合度排序，零成本可用。
-知识文件内容必须已脱敏（见 doc/05-数据接入与安全.md）。
+知识库内容必须已脱敏（见 doc/05-数据接入与安全.md）。
 """
 
-import asyncio
 import hashlib
 import logging
 import re
 import time
 from dataclasses import dataclass
-from pathlib import Path
 
-import yaml
 from sqlalchemy import delete, func, literal, or_, select, true
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.db.models import KnowledgeChunk
-from app.services.guard import mask_pii
 from app.services.llm.usage import UsageRecord, record_usage, token_cost
 
 logger = logging.getLogger(__name__)
-FRONT_MATTER = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
 
 
 @dataclass
@@ -45,42 +40,6 @@ class ParsedChunk:
     @property
     def content_hash(self) -> str:
         return hashlib.sha256(f"{self.source}|{self.title}|{self.content}".encode()).hexdigest()
-
-
-def parse_markdown(path: Path, root: Path) -> list[ParsedChunk]:
-    """按二级标题切块；front matter 支持 title / tags / scenarios。"""
-    text = path.read_text(encoding="utf-8")
-    meta: dict = {}
-    if m := FRONT_MATTER.match(text):
-        meta = yaml.safe_load(m.group(1)) or {}
-        text = text[m.end() :]
-    doc_title = meta.get("title", path.stem)
-    chunks = []
-    for block in re.split(r"(?m)^##\s+", text):
-        block = block.strip()
-        if not block or block.startswith("# "):
-            continue
-        heading, _, body = block.partition("\n")
-        if body.strip():
-            chunks.append(
-                ParsedChunk(
-                    source=path.relative_to(root).as_posix(),
-                    title=f"{doc_title} / {heading.strip()}",
-                    content=mask_pii(body.strip()),
-                    tags=list(meta.get("tags", [])),
-                    scenario_ids=list(meta.get("scenarios", [])),
-                )
-            )
-    return chunks
-
-
-def parse_dir(root: Path) -> list[ParsedChunk]:
-    return [
-        c
-        for f in sorted(root.rglob("*.md"))
-        if f.name.lower() != "readme.md"
-        for c in parse_markdown(f, root)
-    ]
 
 
 def _bigrams(text: str) -> set[str]:
@@ -124,42 +83,36 @@ class KnowledgeBase:
         )
         return vectors
 
-    async def ingest_dir(self, root: Path) -> int:
-        chunks = await asyncio.to_thread(parse_dir, root)
-        return await self.ingest_chunks(chunks, replace_sources={chunk.source for chunk in chunks})
+    async def write_chunks(
+        self, db: AsyncSession, chunks: list[ParsedChunk], vectors: list, sources: set[str]
+    ) -> None:
+        if sources:
+            await db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.source.in_(sources)))
+        for c, vec in zip(chunks, vectors, strict=True):
+            stmt = insert(KnowledgeChunk).values(
+                source=c.source,
+                title=c.title,
+                content=c.content,
+                tags=c.tags,
+                scenario_ids=c.scenario_ids,
+                content_hash=c.content_hash,
+                embedding=vec,
+            )
+            await db.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["content_hash"], set_={"embedding": stmt.excluded.embedding}
+                )
+            )
 
     async def replace_source(self, source: str, chunks: list[ParsedChunk]) -> int:
-        """按来源整体替换（如某条已发布录音的亮点话术）；chunks 为空即删除。"""
-        async with self.session_factory() as db, db.begin():
-            await db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.source == source))
-        return await self.ingest_chunks(chunks)
-
-    async def ingest_chunks(self, chunks: list[ParsedChunk], *, replace_sources: set[str] | None = None) -> int:
-        if not chunks:
-            return 0
+        """在新索引准备好后事务化替换录音参考，空片段表示撤销。"""
         vectors = (
             await self._embed([f"{c.title}\n{c.content}" for c in chunks])
-            if self.cfg.enabled
+            if chunks and self.cfg.enabled
             else [None] * len(chunks)
         )
         async with self.session_factory() as db, db.begin():
-            if replace_sources:
-                await db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.source.in_(replace_sources)))
-            for c, vec in zip(chunks, vectors, strict=True):
-                stmt = insert(KnowledgeChunk).values(
-                    source=c.source,
-                    title=c.title,
-                    content=c.content,
-                    tags=c.tags,
-                    scenario_ids=c.scenario_ids,
-                    content_hash=c.content_hash,
-                    embedding=vec,
-                )
-                await db.execute(
-                    stmt.on_conflict_do_update(
-                        index_elements=["content_hash"], set_={"embedding": stmt.excluded.embedding}
-                    )
-                )
+            await self.write_chunks(db, chunks, vectors, {source})
         return len(chunks)
 
     async def search(self, query: str, scenario_id: str | None, k: int = 3) -> list[Snippet]:
@@ -173,25 +126,40 @@ class KnowledgeBase:
             if scenario_id
             else true()
         )
+        vector = None
+        if self.cfg.enabled:
+            try:
+                [vector] = await self._embed([query])
+            except Exception:
+                logger.exception("向量服务不可用，使用关键词检索")
+        semantic = []
         try:
             async with self.session_factory() as db:
-                if self.cfg.enabled:
-                    [vec] = await self._embed([query])
-                    dist = KnowledgeChunk.embedding.cosine_distance(vec)
-                    rows = (
+                lexical_query = select(KnowledgeChunk).where(scope).order_by(KnowledgeChunk.id).limit(500)
+                if vector is not None:
+                    dist = KnowledgeChunk.embedding.cosine_distance(vector)
+                    vector_rows = (
                         await db.execute(
                             select(KnowledgeChunk, dist.label("d"))
-                            .where(scope, KnowledgeChunk.embedding.is_not(None))
+                            .where(
+                                scope,
+                                KnowledgeChunk.embedding.is_not(None),
+                                ~KnowledgeChunk.source.startswith("script:"),
+                            )
                             .order_by(dist)
                             .limit(k)
                         )
                     ).all()
-                    return [Snippet(r[0].title, r[0].content, 1 - float(r.d)) for r in rows]
-                rows = (await db.execute(select(KnowledgeChunk).where(scope).limit(500))).scalars().all()
+                    semantic = [Snippet(r[0].title, r[0].content, 1 - float(r.d)) for r in vector_rows]
+                    lexical_query = lexical_query.where(
+                        or_(KnowledgeChunk.embedding.is_(None), KnowledgeChunk.source.startswith("script:"))
+                    )
+                rows = (await db.scalars(lexical_query)).all()
         except Exception:
             logger.exception("知识库检索失败，降级为无参考话术")
             return []
         q = _bigrams(query)
         scored = [(len(q & _bigrams(r.title + r.content)) / (len(q) or 1), r) for r in rows]
         scored.sort(key=lambda x: x[0], reverse=True)
-        return [Snippet(r.title, r.content, s) for s, r in scored[:k] if s > 0]
+        lexical = [Snippet(r.title, r.content, s) for s, r in scored[:k] if s > 0]
+        return (lexical[:1] + semantic + lexical[1:])[:k]

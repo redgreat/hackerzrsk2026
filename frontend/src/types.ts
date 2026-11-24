@@ -240,14 +240,22 @@ export interface AdminScenario {
   rubric: { name: string; dimensions: { name: string; weight: number; good: string; bad: string }[] }
 }
 
-export interface KnowledgeItem {
-  id: number
-  source: string
+export interface KnowledgeForm {
+  category: string
   title: string
+  content: string
+  enabled: boolean
   tags: string[]
   scenario_ids: string[]
-  has_embedding: boolean
-  preview: string
+}
+
+export interface KnowledgeItem extends KnowledgeForm {
+  id: string
+}
+
+export interface KnowledgeBundle {
+  version: 1
+  scripts: KnowledgeItem[]
 }
 
 // ---------- 账号 ----------

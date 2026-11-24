@@ -60,7 +60,9 @@ def prepared_db(api_settings: Settings, seed_test_rubrics):
     with engine.begin() as conn:
         seed_test_rubrics(conn)
         conn.execute(
-            text("TRUNCATE users, practice_sessions, practice_messages, model_usage, recordings RESTART IDENTITY CASCADE")
+            text(
+                "TRUNCATE users, practice_sessions, practice_messages, model_usage, recordings RESTART IDENTITY CASCADE"
+            )
         )
         conn.execute(
             text("""
@@ -299,4 +301,35 @@ async def test_publish_rubric_without_changing_open_session(client):
         report = await client.post(f"/api/sessions/{old['id']}/end", headers=employee)
         assert report.json()["rubric"] == initial["rubric"]["name"]
     finally:
-        await client.post(path, headers=admin, json={**initial["rubric"], "base_version": initial["version"] + 1})
+        await client.post(
+            path, headers=admin, json={**initial["rubric"], "base_version": initial["version"] + 1}
+        )
+
+
+async def test_manage_knowledge_scripts(client):
+    admin = await _login(client, "T001")
+    employee = await _login(client, "T002")
+    path = "/api/admin/knowledge"
+    assert (await client.get(f"{path}/export", headers=employee)).status_code == 403
+
+    kb = client._transport.app.state.container.knowledge
+    script = {"category": "测试话术", "title": "璇玑核对", "content": "璇玑测试用语", "enabled": True}
+    response = await client.post(path, headers=admin, json=script)
+    assert response.status_code == 200
+    script_id = response.json()["id"]
+    assert any(item.title == script["title"] for item in await kb.search("璇玑", "R10"))
+
+    response = await client.put(f"{path}/{script_id}", headers=admin, json={**script, "enabled": False})
+    assert response.status_code == 200
+    assert not await kb.search("璇玑", "R10")
+
+    bundle = (await client.get(f"{path}/export", headers=admin)).json()
+    exported = next(item for item in bundle["scripts"] if item["id"] == script_id)
+    exported["enabled"] = True
+    for _ in range(2):
+        response = await client.post(
+            f"{path}/import", headers=admin, json={"version": 1, "scripts": [exported]}
+        )
+        assert response.json() == {"imported": 1}
+    assert len([item for item in await kb.search("璇玑", "R10") if item.title == script["title"]]) == 1
+    await client.put(f"{path}/{script_id}", headers=admin, json={**script, "enabled": False})

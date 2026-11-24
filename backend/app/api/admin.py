@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.api.deps import AdminDep, ContainerDep
 from app.core.errors import Conflict, NotFound
 from app.services import admin as svc
-from app.services import rubrics, stats
+from app.services import knowledge_scripts, rubrics, stats
 from app.services.scenarios import Dimension, Rubric
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -63,8 +63,34 @@ async def scenarios(c: ContainerDep, _: AdminDep) -> list[dict]:
 
 
 @router.get("/knowledge")
-async def knowledge(c: ContainerDep, _: AdminDep) -> list[dict]:
-    return await svc.list_knowledge(c.session_factory)
+async def knowledge(c: ContainerDep, _: AdminDep) -> list[knowledge_scripts.ScriptRecord]:
+    return await knowledge_scripts.list_scripts(c.knowledge)
+
+
+@router.get("/knowledge/export")
+async def export_knowledge(c: ContainerDep, _: AdminDep) -> knowledge_scripts.ScriptBundle:
+    return knowledge_scripts.ScriptBundle(scripts=await knowledge_scripts.list_scripts(c.knowledge))
+
+
+@router.post("/knowledge/import")
+async def import_knowledge(body: knowledge_scripts.ScriptBundle, c: ContainerDep, _: AdminDep) -> dict:
+    return {"imported": await knowledge_scripts.save_scripts(c.knowledge, body.scripts)}
+
+
+@router.post("/knowledge")
+async def add_knowledge(body: knowledge_scripts.ScriptIn, c: ContainerDep, _: AdminDep) -> dict:
+    record = knowledge_scripts.ScriptRecord(id=uuid.uuid4(), **body.model_dump())
+    await knowledge_scripts.save_scripts(c.knowledge, [record])
+    return {"id": record.id}
+
+
+@router.put("/knowledge/{script_id}")
+async def edit_knowledge(
+    script_id: uuid.UUID, body: knowledge_scripts.ScriptIn, c: ContainerDep, _: AdminDep
+) -> dict:
+    record = knowledge_scripts.ScriptRecord(id=script_id, **body.model_dump())
+    await knowledge_scripts.save_scripts(c.knowledge, [record], require_existing=True)
+    return {"id": script_id}
 
 
 class RubricUpdate(BaseModel):

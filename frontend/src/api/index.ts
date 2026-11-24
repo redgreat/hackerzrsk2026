@@ -15,6 +15,8 @@ import type {
   AdminSessionDetail,
   AdminUser,
   KnowledgeItem,
+  KnowledgeBundle,
+  KnowledgeForm,
   MyStats,
   Overview,
   Paged,
@@ -88,6 +90,10 @@ export const api = {
     usage: (q: Query) => get<UsagePage>(`/admin/usage?${qs(q)}`),
     scenarios: () => get<AdminScenario[]>('/admin/scenarios'),
     knowledge: () => get<KnowledgeItem[]>('/admin/knowledge'),
+    addKnowledge: (body: KnowledgeForm) => post<{ id: string }>('/admin/knowledge', body),
+    editKnowledge: (id: string, body: KnowledgeForm) => put<{ id: string }>(`/admin/knowledge/${id}`, body),
+    exportKnowledge: () => get<KnowledgeBundle>('/admin/knowledge/export'),
+    importKnowledge: (body: KnowledgeBundle) => post<{ imported: number }>('/admin/knowledge/import', body),
 
     accounts: (q: Query) => get<Paged<Account> & { pending: number }>(`/admin/accounts?${qs(q)}`),
     reviewAccount: (id: number, action: 'approve' | 'reject' | 'disable' | 'enable') =>
