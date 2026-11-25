@@ -14,7 +14,11 @@ async def my_stats(sf: async_sessionmaker[AsyncSession], user: User) -> dict:
             (
                 await db.execute(
                     select(PracticeSession)
-                    .where(PracticeSession.user_id == user.id, FINISHED)
+                    .where(
+                        PracticeSession.user_id == user.id,
+                        PracticeSession.exam_attempt_id.is_(None),
+                        FINISHED,
+                    )
                     .order_by(PracticeSession.started_at.desc())
                     .limit(50)
                 )

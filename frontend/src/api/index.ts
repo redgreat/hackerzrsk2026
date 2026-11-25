@@ -62,7 +62,7 @@ export const api = {
 
   startSession: (scenarioId: string) => post<SessionDetail>('/sessions', { scenario_id: scenarioId }),
   session: (id: string) => get<SessionDetail>(`/sessions/${id}`),
-  sessions: () => get<SessionSummary[]>('/sessions'),
+  sessions: (offset = 0, limit = 30) => get<SessionSummary[]>(`/sessions?${qs({ offset, limit })}`),
   hint: (id: string) => post<{ hint: string }>(`/sessions/${id}/hint`),
   end: (id: string) => post<Report>(`/sessions/${id}/end`),
   report: (id: string) => get<Report>(`/sessions/${id}/report`),
@@ -70,7 +70,7 @@ export const api = {
   myStats: () => get<MyStats>('/stats/me'),
 
   papers: () => get<PaperCard[]>('/exams'),
-  myAttempts: () => get<AttemptSummary[]>('/exams/attempts'),
+  myAttempts: (offset = 0, limit = 30) => get<AttemptSummary[]>(`/exams/attempts?${qs({ offset, limit })}`),
   startExam: (paperId: string) => post<AttemptDetail>(`/exams/${paperId}/start`),
   attempt: (id: string) => request<AttemptDetail>(`/exams/attempts/${id}`, { cache: 'no-store' }),
   saveAnswers: (id: string, answers: Record<string, number[]>) =>

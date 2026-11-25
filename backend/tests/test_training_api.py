@@ -405,6 +405,8 @@ async def test_formal_exam_with_roleplay(client, exam_pool):
     assert res["passed"] is False
     repeated = (await client.post(f"/api/exams/attempts/{a['id']}/submit", headers=user)).json()
     assert repeated["submitted_at"] == res["submitted_at"] and repeated["result"] == res["result"]
+    practice_history = (await client.get("/api/sessions", headers=user)).json()
+    assert all(record["id"] != sid for record in practice_history)
 
     # 限次：E01 最多 3 次
     for _ in range(2):
@@ -414,6 +416,9 @@ async def test_formal_exam_with_roleplay(client, exam_pool):
     assert r.status_code == 403 and "3 次" in r.json()["message"]
     card = next(p for p in (await client.get("/api/exams", headers=user)).json() if p["id"] == "E01")
     assert card["attempts"] == 3 and card["best_score"] is not None
+    history = (await client.get("/api/exams/attempts?limit=2&offset=1", headers=user)).json()
+    assert len(history) == 2 and history[-1]["id"] == a["id"]
+    assert history[-1]["score"] == res["score"] and history[-1]["passed"] == res["passed"]
 
     page = (await client.get("/api/admin/exams/attempts?paper_id=E01", headers=admin)).json()
     assert page["total"] == 3 and page["items"][0]["user"]["userid"] == "N300"

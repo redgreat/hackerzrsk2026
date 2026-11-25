@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { api } from '@/api'
 import LineTrend from '@/components/LineTrend.vue'
-import { useAuthStore } from '@/stores/auth'
 import type { MyStats, SessionSummary } from '@/types'
 import { OUTCOME_LABEL, OUTCOME_TAG, formatTime, scoreColor } from '@/utils/labels'
 import { showFailToast } from 'vant'
@@ -9,16 +8,34 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
-const auth = useAuthStore()
 const stats = ref<MyStats | null>(null)
 const sessions = ref<SessionSummary[]>([])
+const loading = ref(false)
+const loadError = ref('')
+const hasMore = ref(false)
+const pageSize = 30
+
+async function load() {
+  if (loading.value) return
+  loading.value = true
+  loadError.value = ''
+  try {
+    const page = await api.sessions(sessions.value.length, pageSize + 1)
+    sessions.value.push(...page.slice(0, pageSize))
+    hasMore.value = page.length > pageSize
+  } catch (error) {
+    loadError.value = (error as Error).message
+  } finally {
+    loading.value = false
+  }
+}
 
 onMounted(async () => {
+  void load()
   try {
-    await auth.loadMe()
-    ;[stats.value, sessions.value] = await Promise.all([api.myStats(), api.sessions()])
-  } catch (e) {
-    showFailToast((e as Error).message)
+    stats.value = await api.myStats()
+  } catch (error) {
+    showFailToast((error as Error).message)
   }
 })
 
@@ -26,17 +43,11 @@ function open(s: SessionSummary) {
   router.push(s.status === 'ongoing' ? `/practice/${s.id}` : `/report/${s.id}`)
 }
 
-function logout() {
-  auth.logout()
-  router.replace('/login')
-}
 </script>
 
 <template>
   <div class="page">
-    <van-nav-bar title="我的练习">
-      <template #right><span class="muted" @click="logout">退出</span></template>
-    </van-nav-bar>
+    <van-nav-bar title="练习记录" left-arrow @click-left="router.push('/my')" />
     <p class="page-guide">查看自己的练习成绩和待提升能力，点开一条已完成的练习可回看报告。</p>
 
     <div v-if="stats" class="card summary">
@@ -68,8 +79,8 @@ function logout() {
       </div>
     </div>
 
-    <div class="section-title">练习记录</div>
-    <van-cell-group inset>
+    <van-skeleton v-if="loading && !sessions.length" :row="5" style="margin: 16px" />
+    <van-cell-group v-if="sessions.length" inset>
       <van-cell v-for="s in sessions" :key="s.id" is-link @click="open(s)">
         <template #title>
           <span>{{ s.scenario_name }}</span>
@@ -81,16 +92,18 @@ function logout() {
         </template>
       </van-cell>
     </van-cell-group>
-    <van-empty v-if="!sessions.length" description="还没有练习记录，去练一次吧" />
-
-    <van-cell-group inset style="margin-top: 16px">
-      <van-cell v-if="auth.user?.is_admin" title="效果与成本统计" icon="bar-chart-o" is-link to="/overview" />
-      <van-cell v-if="auth.user?.is_admin" title="管理后台（建议用电脑打开）" icon="setting-o" is-link to="/admin" />
-    </van-cell-group>
+    <van-empty v-if="!loading && !sessions.length && !loadError" description="还没有练习记录">
+      <van-button type="primary" round to="/">去练习</van-button>
+    </van-empty>
+    <div v-if="hasMore || loadError" class="more">
+      <p v-if="loadError" class="muted" role="status">{{ loadError }}</p>
+      <van-button plain size="small" :loading="loading" @click="load">{{ loadError ? '重试' : '加载更多' }}</van-button>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.more { margin: 18px 16px; text-align: center; }
 .summary {
   display: flex;
   justify-content: space-around;

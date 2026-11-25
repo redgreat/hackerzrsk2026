@@ -9,6 +9,8 @@ import { useRoute, useRouter } from 'vue-router'
 const route = useRoute()
 const router = useRouter()
 const aid = route.params.id as string
+const fromHistory = route.query.from === 'history'
+const returnPath = fromHistory ? '/my/exams' : '/exams'
 
 const a = ref<AttemptDetail | null>(null)
 const remaining = ref('')
@@ -64,7 +66,7 @@ async function leave() {
       return
     }
   }
-  await router.push('/exams')
+  await router.push(returnPath)
 }
 
 onMounted(async () => {
@@ -104,7 +106,7 @@ async function startRoleplay(it: RoleplayItem) {
   if (submitting.value || remaining.value === '0:00') return
   try {
     const r = await api.startRoleplay(aid, it.key)
-    router.push(`/practice/${r.session_id}`)
+    router.push({ path: `/practice/${r.session_id}`, query: fromHistory ? { from: 'history' } : {} })
   } catch (e) {
     showFailToast((e as Error).message)
   }
@@ -210,7 +212,7 @@ async function submit() {
               <van-button v-if="!submitted && !it.report_ready" size="small" type="primary" plain round :disabled="submitting || remaining === '0:00'" @click="startRoleplay(it)">
                 {{ it.session_id ? '继续对练' : '开始对练' }}
               </van-button>
-              <van-button v-else-if="submitted && it.report_ready && it.session_id" size="small" plain round @click="router.push(`/report/${it.session_id}`)">
+                <van-button v-else-if="submitted && it.report_ready && it.session_id" size="small" plain round :to="{ path: `/report/${it.session_id}`, query: fromHistory ? { from: 'history' } : {} }">
                 看报告
               </van-button>
             </div>
@@ -223,7 +225,7 @@ async function submit() {
         <van-button type="primary" block round :loading="submitting" :disabled="saving" @click="submit">{{ deadlineChecked ? '重试交卷' : '交卷' }}</van-button>
       </div>
       <div v-else class="bottom">
-        <van-button type="primary" block round @click="router.push('/exams')">返回考试列表</van-button>
+        <van-button type="primary" block round :to="returnPath">{{ fromHistory ? '返回考试记录' : '返回考试列表' }}</van-button>
       </div>
     </template>
   </div>

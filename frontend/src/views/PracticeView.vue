@@ -127,7 +127,9 @@ async function send(text: string) {
 
 function showResult() {
   const aid = session.value?.exam_attempt_id
-  return router.replace(aid ? `/attempt/${aid}` : `/report/${sid}`)
+  return router.replace(aid
+    ? { path: `/attempt/${aid}`, query: route.query.from === 'history' ? { from: 'history' } : {} }
+    : `/report/${sid}`)
 }
 
 async function onPressStart() {

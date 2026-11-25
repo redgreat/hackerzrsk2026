@@ -335,14 +335,15 @@ class PracticeService:
         async with self.sf() as db:
             return (await self._owned(db, sid, user)).report
 
-    async def list_sessions(self, user: User, limit: int = 30) -> list[dict]:
+    async def list_sessions(self, user: User, limit: int = 30, offset: int = 0) -> list[dict]:
         async with self.sf() as db:
             rows = (
                 (
                     await db.execute(
                         select(PracticeSession)
-                        .where(PracticeSession.user_id == user.id)
-                        .order_by(PracticeSession.started_at.desc())
+                        .where(PracticeSession.user_id == user.id, PracticeSession.exam_attempt_id.is_(None))
+                        .order_by(PracticeSession.started_at.desc(), PracticeSession.id.desc())
+                        .offset(offset)
                         .limit(limit)
                     )
                 )

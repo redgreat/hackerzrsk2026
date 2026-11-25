@@ -2,7 +2,7 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.sse import EventSourceResponse
 from pydantic import BaseModel, Field
 
@@ -31,8 +31,10 @@ async def start_session(body: StartIn, c: ContainerDep, user: UserDep) -> dict:
 
 
 @router.get("")
-async def list_sessions(c: ContainerDep, user: UserDep) -> list[dict]:
-    return await c.practice.list_sessions(user)
+async def list_sessions(
+    c: ContainerDep, user: UserDep, limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0)
+) -> list[dict]:
+    return await c.practice.list_sessions(user, limit=limit, offset=offset)
 
 
 @router.get("/{sid}")

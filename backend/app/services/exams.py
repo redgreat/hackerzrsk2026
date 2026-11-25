@@ -405,14 +405,15 @@ class ExamService:
             for p in papers
         ]
 
-    async def my_attempts(self, user: User, limit: int = 30) -> list[dict]:
+    async def my_attempts(self, user: User, limit: int = 30, offset: int = 0) -> list[dict]:
         async with self.sf() as db:
             rows = (
                 (
                     await db.execute(
                         select(ExamAttempt)
                         .where(ExamAttempt.user_id == user.id)
-                        .order_by(ExamAttempt.started_at.desc())
+                        .order_by(ExamAttempt.started_at.desc(), ExamAttempt.id.desc())
+                        .offset(offset)
                         .limit(limit)
                     )
                 )

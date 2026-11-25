@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from app.api.deps import ContainerDep, UserDep
@@ -24,8 +24,10 @@ async def list_papers(c: ContainerDep, user: UserDep) -> list[dict]:
 
 
 @router.get("/attempts")
-async def my_attempts(c: ContainerDep, user: UserDep) -> list[dict]:
-    return await c.exams.my_attempts(user)
+async def my_attempts(
+    c: ContainerDep, user: UserDep, limit: int = Query(30, ge=1, le=100), offset: int = Query(0, ge=0)
+) -> list[dict]:
+    return await c.exams.my_attempts(user, limit=limit, offset=offset)
 
 
 @router.post("/{paper_id}/start")
