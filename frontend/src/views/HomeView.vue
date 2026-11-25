@@ -32,6 +32,7 @@ onMounted(async () => {
     <div class="hero">
       <div class="hello">你好，{{ auth.user?.name || '同学' }}</div>
       <div class="sub">按业务背景或练习类型筛选。选中场景后先了解目标，再和 AI 客户对练。</div>
+      <RouterLink to="/intro" class="intro-link">项目介绍 <van-icon name="arrow" /></RouterLink>
     </div>
 
     <van-skeleton v-if="loading" :row="6" style="margin: 16px" />
@@ -86,6 +87,17 @@ onMounted(async () => {
 .sub {
   margin-top: 6px;
   opacity: 0.85;
+}
+.intro-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 7px 12px;
+  border: 1px solid #ffffff73;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
 }
 .scenario {
   display: block;
